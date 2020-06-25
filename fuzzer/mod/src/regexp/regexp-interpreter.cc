@@ -22,6 +22,8 @@
 #include "src/regexp/regexp.h"
 #include "src/strings/unicode.h"
 #include "src/utils/utils.h"
+#include "fuzz/coverage-tracker.hpp"
+
 
 #ifdef V8_INTL_SUPPORT
 #include "unicode/uchar.h"
@@ -40,6 +42,7 @@ namespace internal {
 // ------- mod_mcl_2020 -------
 
 uint64_t regexp_exec_cost = 0;
+regulator::fuzz::CoverageTracker *coverage_tracker = nullptr;
 
 // ------- (end) mod_mcl_2020 -------
 
@@ -303,10 +306,14 @@ bool CheckBitInTable(const uint32_t current_char, const byte* const table) {
 #define ADVANCE(name)                             \
   next_pc = pc + RegExpBytecodeLength(BC_##name); \
   DECODE()
+
+// ------- mod_mcl_2020 -------
 #define SET_PC_FROM_OFFSET(offset)  \
   next_pc = code_base + offset;     \
   v8::internal::regexp_exec_cost++; \
+  v8::internal::coverage_tracker->Cover(reinterpret_cast<uintptr_t>(pc), reinterpret_cast<uintptr_t>(next_pc)); \
   DECODE()
+// ------- mod_mcl_2020 -------
 
 #ifdef DEBUG
 #define BYTECODE(name)                                                \
@@ -380,10 +387,13 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
   BacktrackStack backtrack_stack;
 
   uint32_t backtrack_count = 0;
-  
+
   // ------- mod_mcl_2020 -------
   v8::internal::regexp_exec_cost = 0;
+  delete v8::internal::coverage_tracker;
+  v8::internal::coverage_tracker = new ::regulator::fuzz::CoverageTracker();
   // ------- (end) mod_mcl_2020 -------
+
 
 #ifdef DEBUG
   if (FLAG_trace_regexp_bytecodes) {

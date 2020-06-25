@@ -23,7 +23,6 @@ TEST_CASE( "Match info should encompass the whole match in 0th and 1st register"
 
     e::V8RegExpResult exec_result;
     e::Result exec_result_status = e::Exec(&regexp, "the quick brown fox", 19, &exec_result);
-    
 
     REQUIRE( exec_result_status == e::kSuccess );
     REQUIRE( exec_result.match_success == true );

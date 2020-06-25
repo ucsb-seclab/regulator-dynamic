@@ -10,6 +10,8 @@
 #include <stdint.h>
 
 #include "src/objects/js-regexp.h"
+#include "fuzz/coverage-tracker.hpp"
+
 
 namespace regulator
 {
@@ -34,10 +36,12 @@ public:
 class V8RegExpResult {
 public:
     V8RegExpResult();
+    ~V8RegExpResult();
 
     bool match_success;
     uint64_t opcount;
     v8::internal::MaybeHandle<v8::internal::RegExpMatchInfo> match;
+    regulator::fuzz::CoverageTracker *coverage_tracker;
 };
 
 /**

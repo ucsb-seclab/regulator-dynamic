@@ -14,27 +14,6 @@ namespace regulator
 {
 
 /**
- * The type of output that should be produced
- */
-enum target_output {
-    /**
-     * Unset
-     */
-    kUnassigned,
-
-    /**
-     * Should generate bytecode regex output
-     */
-    kByteCode,
-
-    /**
-     * Should generate native code
-     */
-    kNativeCode,
-};
-
-
-/**
  * Holds details about parsed command-line arguments
  */
 class ParsedArguments {
@@ -47,14 +26,6 @@ public:
      * The regex flags
      */
     std::string flags;
-    /**
-     * The target output type
-     */
-    target_output target;
-    /**
-     * Where to output the file
-     */
-    std::string output_file_name;
 
     /**
      * Parses command-line arguments
