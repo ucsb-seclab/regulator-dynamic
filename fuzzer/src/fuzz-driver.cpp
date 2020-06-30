@@ -135,8 +135,8 @@ uint64_t Fuzz(
 
         if ((i & (0x4 - 1)) == 0)
         {
-            // std::cout << "Compacting" << std::endl;
-            // corpus.Economize();
+            std::cout << "Compacting" << std::endl;
+            corpus.Economize();
         }
     }
 

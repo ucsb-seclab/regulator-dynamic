@@ -28,7 +28,7 @@ void GenChildren(
         memcpy(newbuf, last_buf, buflen);
 
         // select a mutation to apply
-        switch (random() % 4)
+        switch (random() % 5)
         {
         case 0:
             mutate_random_byte(newbuf, buflen);
@@ -44,6 +44,7 @@ void GenChildren(
             break;
         case 4:
             crossover(newbuf, buflen, corpus);
+            break;
         default:
             throw "Unreachable";
         }

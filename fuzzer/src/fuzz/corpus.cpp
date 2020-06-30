@@ -55,7 +55,7 @@ std::string CorpusEntry::ToString() const
         {
             out.width(2);
             out.fill('0');
-            out << "\\x" << std::hex << static_cast<unsigned char>(c);
+            out << "\\x" << std::hex << static_cast<uint16_t>(c);
         }
         
     }
@@ -156,32 +156,53 @@ bool Corpus::HasNewPath(CoverageTracker *coverage_tracker)
 
 void Corpus::Economize()
 {
-    // naive implementation -- eliminate anything w/ duplicate hashes
-    std::vector<CorpusEntry *> not_redundant;
+    bool *redundants = new bool[this->entries.size()];
+    for (size_t i=0; i < this->entries.size(); i++)
+    {
+        redundants[i] = false;
+    }
+
 
     for (size_t i=0; i<this->entries.size(); i++)
     {
+        if (redundants[i])
+        {
+            // this is already redundant so don't bother
+            continue;
+        }
+
         CorpusEntry *left = this->entries[i];
 
         for (size_t j=i+1; j < this->entries.size(); j++)
         {
-            CorpusEntry *right = this->entries[i];
+            if (redundants[j])
+            {
+                // already redundant, don't bother
+                continue;
+            }
+
+            CorpusEntry *right = this->entries[j];
+
             if (left->GetCoverageTracker()->IsEquivalent(right->GetCoverageTracker()))
             {
-                goto redundant;
+                redundants[j] = true;
             }
         }
+    }
 
-        // no redundancy noticed
-        not_redundant.push_back(left);
-
-        // fall-through / jump to outer loop
-        redundant:
-        continue;
+    std::vector<CorpusEntry *> not_redundant;
+    for (size_t i=0; i<this->entries.size(); i++)
+    {
+        if (!redundants[i])
+        {
+            not_redundant.push_back(this->entries[i]);
+        }
     }
 
     this->entries.clear();
     this->entries.insert(this->entries.begin(), not_redundant.begin(), not_redundant.end());
+
+    delete[] redundants;
 }
 
 size_t Corpus::Size() const
