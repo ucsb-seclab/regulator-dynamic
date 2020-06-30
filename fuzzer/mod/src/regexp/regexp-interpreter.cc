@@ -853,6 +853,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
           SET_PC_FROM_OFFSET(Load32Aligned(pc + 8));
           DISPATCH();
         }
+        v8::internal::coverage_tracker->Cover(reinterpret_cast<uintptr_t>(pc)); // ------- mod_mcl_2020 -------
         current += advance;
       }
       SET_PC_FROM_OFFSET(Load32Aligned(pc + 12));
@@ -871,6 +872,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
           SET_PC_FROM_OFFSET(Load32Aligned(pc + 16));
           DISPATCH();
         }
+        v8::internal::coverage_tracker->Cover(reinterpret_cast<uintptr_t>(pc)); // ------- mod_mcl_2020 -------
         current += advance;
       }
       SET_PC_FROM_OFFSET(Load32Aligned(pc + 20));
@@ -888,6 +890,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
           SET_PC_FROM_OFFSET(Load32Aligned(pc + 12));
           DISPATCH();
         }
+        v8::internal::coverage_tracker->Cover(reinterpret_cast<uintptr_t>(pc)); // ------- mod_mcl_2020 -------
         current += advance;
       }
       SET_PC_FROM_OFFSET(Load32Aligned(pc + 16));
@@ -904,6 +907,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
           SET_PC_FROM_OFFSET(Load32Aligned(pc + 24));
           DISPATCH();
         }
+        v8::internal::coverage_tracker->Cover(reinterpret_cast<uintptr_t>(pc)); // ------- mod_mcl_2020 -------
         current += advance;
       }
       SET_PC_FROM_OFFSET(Load32Aligned(pc + 28));
@@ -925,6 +929,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
           SET_PC_FROM_OFFSET(Load32Aligned(pc + 24));
           DISPATCH();
         }
+        v8::internal::coverage_tracker->Cover(reinterpret_cast<uintptr_t>(pc)); // ------- mod_mcl_2020 -------
         current += advance;
       }
       SET_PC_FROM_OFFSET(Load32Aligned(pc + 28));
@@ -949,6 +954,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
           SET_PC_FROM_OFFSET(Load32Aligned(pc + 12));
           DISPATCH();
         }
+        v8::internal::coverage_tracker->Cover(reinterpret_cast<uintptr_t>(pc)); // ------- mod_mcl_2020 -------
         current += advance;
       }
       SET_PC_FROM_OFFSET(Load32Aligned(pc + 16));

@@ -9,6 +9,8 @@
 
 #include <cstdint>
 #include <vector>
+#include <string>
+
 
 #include "coverage-tracker.hpp"
 
@@ -27,23 +29,23 @@ class CorpusEntry
 {
 public:
     /**
-     * Construct a CorpusEntry by deep-copying the given structures.
+     * Construct a CorpusEntry
+     * Takes ownership of the params.
      */
-    CorpusEntry(const uint8_t *buf, size_t buflen, uint64_t opcount, CoverageTracker *coverage_tracker);
+    CorpusEntry(uint8_t *buf, size_t buflen, CoverageTracker *coverage_tracker);
 
     ~CorpusEntry();
 
-    /**
-     * A generic heuristic derived from internal state.
-     * 
-     * Generally, higher goodness = more desirable
-     */
-    uint64_t Goodness();
+    inline CoverageTracker *GetCoverageTracker()
+    {
+        return this->coverage_tracker;
+    };
+
+    std::string ToString() const;
 
     uint8_t *buf;
     uint32_t buflen;
-    uint64_t opcount;
-    CoverageTracker *coverage_tracker;
+    regulator::fuzz::CoverageTracker *coverage_tracker;
 };
 
 
@@ -80,14 +82,26 @@ public:
     CorpusEntry *Get(size_t i);
 
     /**
-     * Gets the maximum opcount known in this corpus
+     * Gets the maximum opcount entry known in this corpus
      */
-    uint64_t MaxOpcount();
+    CorpusEntry *MaxOpcount();
 
     /**
-     * Gets the corpus entry with the highest Goodness measure
+     * Returns True if this tracker object has any cfg edges which
+     * maximize the current known upper bound
      */
-    CorpusEntry *MostGood();
+    bool MaximizesUpperBound(CoverageTracker *coverage_tracker);
+
+
+    /**
+     * Returns True if this tracker object exceeds the known upper bound
+     */
+    bool HasNewPath(CoverageTracker *coverage_tracker);
+
+    /**
+     * Removes corpus members which are probably redundant
+     */
+    void Economize();
 
     /**
      * The number of entries in the corpus
@@ -109,13 +123,7 @@ private:
 
     CoverageTracker *coverage_upper_bound;
 
-    /**
-     * Min-Heap of CorpusEntries as measured by
-     * CoverageTracker's Popcount().
-     */
-    std::vector<CorpusEntry*> min_heap;
-
-    uint32_t max_corpus_size;
+    std::vector<CorpusEntry*> entries;
 };
 
 }

@@ -23,8 +23,14 @@ enum Result {
     kSuccess,
     kNotValidUtf8,
     kCouldNotCompile,
+    kBadStrRepresentation,
 };
 
+enum EnforceRepresentation {
+    kAnyRepresentation,
+    kOnlyOneByte,
+    kOnlyTwoByte
+};
 
 class V8RegExp {
 public:
@@ -59,7 +65,12 @@ v8::Isolate *Initialize();
 Result Compile(const char *pattern, const char *flags, V8RegExp *out);
 
 
-Result Exec(V8RegExp *regexp, char *subject, size_t subject_len, V8RegExpResult *out);
+Result Exec(
+    V8RegExp *regexp,
+    char *subject,
+    size_t subject_len,
+    V8RegExpResult *out,
+    EnforceRepresentation rep = kAnyRepresentation);
 
 }
 }

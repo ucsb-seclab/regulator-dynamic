@@ -14,22 +14,7 @@ namespace regulator
 namespace fuzz
 {
 
-void print_helper(uint8_t *buf, size_t strlen)
-{
-    // prints to cout
-    for (size_t i=0; i<strlen; i++)
-    {
-        char c = buf[i];
-        if ( ' ' <= c && c <= '~' )
-        {
-            std::cout << c;
-        }
-        else
-        {
-            std::cout << "\\x" << std::hex << static_cast<uint16_t>(buf[i]) << std::dec;
-        }
-    }
-}
+static const size_t N_CHILDREN_PER_PARENT = 100;
 
 
 uint64_t Fuzz(
@@ -41,10 +26,7 @@ uint64_t Fuzz(
     
     // baseline: start with a string of random bytes
     uint8_t *baseline = new uint8_t[strlen];
-    for (size_t i = 0; i < strlen; i++)
-    {
-        baseline[i] = static_cast<uint8_t>(random());
-    }
+    memset(baseline, 'a', strlen);
 
     regulator::executor::V8RegExpResult result;
     regulator::executor::Result result_code = regulator::executor::Exec(
@@ -55,50 +37,107 @@ uint64_t Fuzz(
     if (result_code != regulator::executor::kSuccess)
     {
         std::cerr << "Baseline execution failed!!!" << std::endl;
+        std::cerr << (result_code == regulator::executor::kNotValidUtf8) << std::endl;
         return 0;
     }
 
-    CorpusEntry *baseline_entry = new CorpusEntry(baseline, strlen, result.opcount, result.coverage_tracker);
+    CorpusEntry *baseline_entry = new CorpusEntry(baseline, strlen, new CoverageTracker(*result.coverage_tracker));
 
     corpus.Record(baseline_entry);
 
     uint8_t *tmp_fuzz_buff = new uint8_t[strlen];
+
+    std::vector<CorpusEntry *> new_children;
+    std::vector<uint8_t *> children;
+
     for (size_t i=0; i<1024; i++)
     {
-        for (size_t j=0; j<(1024 * 2); j++)
+        // Iterate over each item in the corpus
+        for (size_t j=0; j < corpus.Size(); j++)
         {
-            // get parent
-            CorpusEntry *input = corpus.GetOne();
+            CorpusEntry * parent = corpus.Get(j);
 
-            // create child
-            memcpy(tmp_fuzz_buff, input->buf, strlen);
-            havoc_random_byte(tmp_fuzz_buff, strlen);
+            // Choose whether to use this entry as a parent
             
-            // print_helper(tmp_fuzz_buff, strlen);
-            // std::cout << std::endl;
-            
-            // execute
-            result_code = regulator::executor::Exec(
-                regexp,
-                reinterpret_cast<char *>(tmp_fuzz_buff), strlen, &result
-            );
-
-            if (result_code != regulator::executor::kSuccess)
+            // alpha = prob(selected) * 1024 - 1
+            uint64_t alpha = 9; // approx. 1%
+            if (corpus.MaximizesUpperBound(parent->coverage_tracker))
             {
-                std::cerr << "execution failed!!!" << std::endl;
-                return 0;
+                alpha = 1024 - 1;
             }
 
-            // record into corpus
-            CorpusEntry *new_entry = new CorpusEntry(tmp_fuzz_buff, strlen, result.opcount, result.coverage_tracker);
+            if (random() & (1024 - 1) > alpha)
+            {
+                // This entry was NOT selected to be a parent
+                continue;
+            }
 
-            corpus.Record(new_entry);
+            // Create children
+            GenChildren(&corpus, j, N_CHILDREN_PER_PARENT, children);
+
+            // Evaluate each child
+            for (size_t k = 0; k < children.size(); k++)
+            {
+                uint8_t *child = children[k];
+
+                result_code = regulator::executor::Exec(
+                    regexp,
+                    (char *)(child),
+                    strlen,
+                    &result,
+                    regulator::executor::kOnlyOneByte
+                );
+
+                if (result_code == regulator::executor::kBadStrRepresentation)
+                {
+                    // child mutated to a two-byte representation, skip it for now
+                    continue;
+                }
+
+                if (result_code != regulator::executor::kSuccess)
+                {
+                    std::cerr << "execution failed!!!" << std::endl;
+                    return 0;
+                }
+
+                // If this child uncovered new behavior, then add it to new_children
+                // (later added to corpus, which assumes ownership)
+                if (corpus.HasNewPath(result.coverage_tracker))
+                {
+                    new_children.push_back(new CorpusEntry(
+                        child,
+                        strlen,
+                        new CoverageTracker(*result.coverage_tracker)
+                    ));
+                }
+                // Otherwise, no new behavior was discovered, delete the memory
+                else
+                {
+                    delete[] child;
+                }
+            }
+
+            children.clear();
         }
 
-        CorpusEntry *most_good = corpus.MostGood();
-        std::cout << "(" << i << ") -> " << most_good->Goodness();
-        print_helper(most_good->buf, most_good->buflen);
-        std::cout << std::endl;
+        // record new children into corpus
+        for (size_t k=0; k<new_children.size(); k++)
+        {
+            corpus.Record(new_children[k]);
+        }
+        new_children.clear();
+
+        std::cout << "Corpus size: " << corpus.Size() << std::endl;
+        CorpusEntry *most_good = corpus.MaxOpcount();
+        std::cout << "Most good: " << most_good->ToString() << std::endl;
+        CorpusEntry *arbitrary = corpus.GetOne();
+        std::cout << "Sample: " << arbitrary->ToString() << std::endl;
+
+        if ((i & (0x4 - 1)) == 0)
+        {
+            // std::cout << "Compacting" << std::endl;
+            // corpus.Economize();
+        }
     }
 
     delete[] baseline;

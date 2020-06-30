@@ -5,7 +5,8 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "${workspaceFolder}/mod",
-                "${workspaceFolder}/deps/v8"
+                "${workspaceFolder}/deps/v8",
+                "${workspaceFolder}/deps/cxxopts"
             ],
             "defines": ["V8_INTL_SUPPORT"],
             "compilerPath": "/usr/bin/clang",

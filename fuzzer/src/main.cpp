@@ -23,7 +23,7 @@ int main(int argc, char* argv[])
     ctx->Enter();
 
 
-    std::cout << "Compiling" << std::endl;
+    std::cout << "Compiling for regexp: " << args.target_regex << std::endl;
 
     // Compile the regexp
     regulator::executor::V8RegExp regexp;
@@ -40,9 +40,8 @@ int main(int argc, char* argv[])
 
     std::cout << "Compiled" << std::endl;
 
-    size_t strlen = 6;
-    uint8_t *out = new uint8_t[strlen];
-    uint64_t opcount = regulator::fuzz::Fuzz(isolate, &regexp, out, strlen);
+    uint8_t *out = new uint8_t[args.strlen];
+    uint64_t opcount = regulator::fuzz::Fuzz(isolate, &regexp, out, args.strlen);
 
     std::cout << "found opcount: " << opcount << std::endl;
 

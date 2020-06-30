@@ -4,6 +4,7 @@
 #include <vector>
 #include <random>
 #include <iostream>
+#include <sstream>
 
 namespace regulator
 {
@@ -11,16 +12,13 @@ namespace fuzz
 {
 
 CorpusEntry::CorpusEntry(
-    const uint8_t *buf,
+    uint8_t *buf,
     size_t buflen,
-    uint64_t opcount,
     CoverageTracker *coverage_tracker)
 {
     this->buflen = buflen;
-    this->buf = new uint8_t[buflen];
-    memcpy(this->buf, buf, buflen);
-    this->coverage_tracker = coverage_tracker == nullptr ? new CoverageTracker() : new CoverageTracker(*coverage_tracker);
-    this->opcount = opcount;
+    this->buf = buf;
+    this->coverage_tracker = coverage_tracker;
 }
 
 CorpusEntry::~CorpusEntry()
@@ -29,22 +27,57 @@ CorpusEntry::~CorpusEntry()
     delete this->coverage_tracker;
 }
 
-uint64_t CorpusEntry::Goodness()
+std::string CorpusEntry::ToString() const
 {
-    // higher goodness = better
+    std::ostringstream out;
+    out << "<CorpusEntry ";
+    out << "word=\"";
+    for (size_t i = 0; i < this->buflen; i++)
+    {
+        char c = this->buf[i];
+        if (' ' <= c && c <= '~')
+        {
+            out << c;
+        }
+        else if (c == '\n')
+        {
+            out << "\\n";
+        }
+        else if (c == '\t')
+        {
+            out << "\\t";
+        }
+        else if (c == '\r')
+        {
+            out << "\\r";
+        }
+        else
+        {
+            out.width(2);
+            out.fill('0');
+            out << "\\x" << std::hex << static_cast<unsigned char>(c);
+        }
+        
+    }
+    out << std::dec;
+    out << "\" Total=" << this->coverage_tracker->Total();
 
-    uint64_t ret = 0;
+    // shorten path hash into 32 bits (from 128) by XOR-ing the parts
+    path_hash_t hash = this->coverage_tracker->PathHash();
+    uint32_t hash_out = 0;
+    hash_out ^= hash & (0xFFFFFFFF);
+    hash >>= 32;
+    hash_out ^= hash & (0xFFFFFFFF);
+    hash >>= 32;
+    hash_out ^= hash & (0xFFFFFFFF);
+    hash >>= 32;
+    hash_out ^= hash & (0xFFFFFFFF);
 
-    // add (scaled) popcount to goodness
-    ret += 30 * this->coverage_tracker->Popcount();
+    out << " PathHash=" << std::hex << hash_out;
+    out << ">";
 
-    // add (scaled) opcount to goodness
-    ret += this->opcount;
-
-    return ret;
+    return out.str();
 }
-
-const size_t Corpus::MaxEntries = 16;
 
 Corpus::Corpus()
 {
@@ -53,173 +86,112 @@ Corpus::Corpus()
 
 Corpus::~Corpus()
 {
-    while (this->min_heap.size() > 0)
+    while (this->entries.size() > 0)
     {
-        delete this->min_heap.at(this->min_heap.size() - 1);
-        this->min_heap.pop_back();
+        delete this->entries.at(this->entries.size() - 1);
+        this->entries.pop_back();
     }
     delete this->coverage_upper_bound;
 }
 
-
 void Corpus::Record(CorpusEntry *entry)
 {
-    // If this record demonstrates new covered branches then prefer to keep it
-    // and evict another entry if necessary.
-    bool should_add = (
-        this->min_heap.size() == 0 ||
-        this->coverage_upper_bound->HasNewPath(entry->coverage_tracker) ||
-        (
-            this->min_heap.size() < Corpus::MaxEntries &&
-            this->min_heap[0]->Goodness() <= entry->Goodness()
-        )
-    );
-    if (should_add)
-    {
-        if (this->min_heap.size() >= Corpus::MaxEntries)
-        {
-            this->EvictOne();
-        }
-        this->Add(entry);
-        this->coverage_upper_bound->Union(entry->coverage_tracker);
-    }
-    else
-    {
-        // this record is useless... delete it
-        delete entry;
-    }
+    this->Add(entry);
 }
 
 void Corpus::Add(CorpusEntry *entry)
 {
-    // add to the back of the heap and bubble up as appropriate
-    this->min_heap.push_back(entry);
+    this->entries.push_back(entry);
 
-    // start bubbling
-    size_t curr = this->min_heap.size() - 1;
-
-    while (curr > 0)
-    {
-        size_t parent = (curr - 1) >> 1;
-        if (this->min_heap[curr]->Goodness() < this->min_heap[parent]->Goodness())
-        {
-            // swap upward and continue
-            CorpusEntry *tmp = this->min_heap[curr];
-            this->min_heap[curr] = this->min_heap[parent];
-            this->min_heap[parent] = tmp;
-        }
-        else
-        {
-            break;
-        }
-    }
+    this->coverage_upper_bound->Union(entry->coverage_tracker);
 }
 
 CorpusEntry *Corpus::GetOne()
 {
-    if (this->min_heap.size() < 1)
+    if (this->entries.size() < 1)
     {
         return nullptr;
     }
     
-    return this->min_heap[random() % this->min_heap.size()];
+    return this->entries[random() % this->entries.size()];
 }
 
 CorpusEntry *Corpus::Get(size_t i)
 {
-    if (i >= this->min_heap.size())
+    if (i >= this->entries.size())
     {
         return nullptr;
     }
 
-    return this->min_heap[i];
+    return this->entries[i];
 }
 
-uint64_t Corpus::MaxOpcount()
+CorpusEntry *Corpus::MaxOpcount()
 {
-    uint64_t ret = 0;
-    for (size_t i=0; i<this->min_heap.size(); i++)
-    {
-        ret = std::max(ret, this->min_heap[i]->opcount);
-    }
-    return ret;
-}
-
-CorpusEntry *Corpus::MostGood()
-{
-    if (this->min_heap.size() == 0)
+    if (this->entries.size() < 1)
     {
         return nullptr;
     }
 
-    CorpusEntry *ret = this->min_heap[0];
-    for (size_t i=1; i < this->min_heap.size(); i++)
+    CorpusEntry *most = this->entries[0];
+    for (size_t i=1; i<this->entries.size(); i++)
     {
-        if (this->min_heap[i]->Goodness() > ret->Goodness())
+        if (most->coverage_tracker->Total() < this->entries[i]->coverage_tracker->Total())
         {
-            ret = this->min_heap[i];
+            most = this->entries[i];
         }
     }
+    return most;
+}
 
-    return ret;
+bool Corpus::MaximizesUpperBound(CoverageTracker *coverage_tracker)
+{
+    return this->coverage_upper_bound->MaximizesEdge(coverage_tracker);
+}
+
+bool Corpus::HasNewPath(CoverageTracker *coverage_tracker)
+{
+    return this->coverage_upper_bound->HasNewPath(coverage_tracker);
+}
+
+void Corpus::Economize()
+{
+    // naive implementation -- eliminate anything w/ duplicate hashes
+    std::vector<CorpusEntry *> not_redundant;
+
+    for (size_t i=0; i<this->entries.size(); i++)
+    {
+        CorpusEntry *left = this->entries[i];
+
+        for (size_t j=i+1; j < this->entries.size(); j++)
+        {
+            CorpusEntry *right = this->entries[i];
+            if (left->GetCoverageTracker()->IsEquivalent(right->GetCoverageTracker()))
+            {
+                goto redundant;
+            }
+        }
+
+        // no redundancy noticed
+        not_redundant.push_back(left);
+
+        // fall-through / jump to outer loop
+        redundant:
+        continue;
+    }
+
+    this->entries.clear();
+    this->entries.insert(this->entries.begin(), not_redundant.begin(), not_redundant.end());
 }
 
 size_t Corpus::Size() const
 {
-    return this->min_heap.size();
+    return this->entries.size();
 }
 
 void Corpus::EvictOne()
 {
-    // evict the least-good corpus member
-    if (this->min_heap.size() == 0)
-    {
-        return;
-    }
-
-    // top-of-heap is index 0, which is 'least good'
-    delete this->min_heap.at(0);
-
-    // move last elem up to 0th index, then bubble it down into place
-    this->min_heap[0] = this->min_heap[min_heap.size() - 1];
-    this->min_heap.pop_back();
-
-    // bubble down, visual aid:
-    //     0
-    //   1   2
-    //  3 4 5 6
-    #define CHILD_1_IDX(x) (2 * x + 1)
-    #define CHILD_2_IDX(x) (2 * x + 2)
-
-    size_t curr = 0;
-    while (curr > 0)
-    {
-        size_t smallest = curr;
-        if (this->min_heap[curr]->Goodness() > this->min_heap[CHILD_1_IDX(curr)]->Goodness())
-        {
-            smallest = CHILD_1_IDX(curr);
-        }
-        if (this->min_heap[smallest]->Goodness() > this->min_heap[CHILD_2_IDX(curr)]->Goodness())
-        {
-            smallest = CHILD_2_IDX(curr);
-        }
-
-        // if we have a new smallest then swap down and continue
-        if (smallest != curr)
-        {
-            CorpusEntry *tmp = this->min_heap[curr];
-            this->min_heap[curr] = this->min_heap[smallest];
-            this->min_heap[smallest] = tmp;
-            curr = smallest;
-        }
-        else // smallest == curr
-        {
-            break;
-        }
-    }
-
-    #undef CHILD_1_IDX
-    #undef CHILD_2_IDX
+    throw "NotImplemented";
 }
 
 }

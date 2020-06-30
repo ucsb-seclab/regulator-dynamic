@@ -28,6 +28,11 @@ public:
     std::string flags;
 
     /**
+     * The string length to fuzz
+     */
+    uint32_t strlen;
+
+    /**
      * Parses command-line arguments
      */
     static ParsedArguments Parse(int argc, char **argv);

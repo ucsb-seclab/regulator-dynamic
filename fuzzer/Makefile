@@ -110,6 +110,7 @@ FUZZER_DEPS += ${FUZZER_DEPS_FUZZ_OS}
 FUZZER_DEPS += build/argument-parser.o
 FUZZER_DEPS += build/regexp-executor.o
 FUZZER_DEPS += build/fuzz-driver.o
+FUZZER_DEPS += build/murmurhash.o
 
 build/fuzzer: node ${FUZZER_DEPS} ${V8_DEPS} build/libv8_base_without_compiler.a
 	mkdir -p build
@@ -126,7 +127,7 @@ build/fuzz-driver.o: src/fuzz-driver.cpp src/fuzz-driver.hpp src/regexp-executor
 
 
 build/argument-parser.o: src/argument-parser.hpp src/argument-parser.cpp
-	g++ -c ${CFLAGS} -o $@ src/argument-parser.cpp
+	g++ -c ${CFLAGS} -Ideps/cxxopts -o $@ src/argument-parser.cpp
 
 
 build/regexp-executor.o: src/regexp-executor.cpp src/regexp-executor.hpp src/fuzz/coverage-tracker.hpp
@@ -134,13 +135,17 @@ build/regexp-executor.o: src/regexp-executor.cpp src/regexp-executor.hpp src/fuz
 
 
 build/coverage-tracker.o: src/fuzz/coverage-tracker.cpp src/fuzz/coverage-tracker.hpp
-	g++ -c ${CFLAGS} -o $@ src/fuzz/coverage-tracker.cpp
+	g++ -c ${CFLAGS} -Ideps/murmurhash -o $@ src/fuzz/coverage-tracker.cpp
 
 build/corpus.o: src/fuzz/corpus.cpp src/fuzz/corpus.hpp src/fuzz/coverage-tracker.hpp
 	g++ -c ${CFLAGS} -o $@ src/fuzz/corpus.cpp
 
 build/mutator.o: src/fuzz/mutator.cpp src/fuzz/mutator.hpp
 	g++ -c ${CFLAGS} -o $@ src/fuzz/mutator.cpp
+
+
+build/murmurhash.o: deps/murmurhash/murmur3.c deps/murmurhash/murmur3.h
+	gcc -c ${CFLAGS} -Ideps/murmurhash -O3 -o $@ deps/murmurhash/murmur3.c
 
 
 V8_MOD_DEPS = build/regexp-macro-assembler.o
