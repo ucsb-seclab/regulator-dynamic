@@ -28,7 +28,7 @@ void GenChildren(
         memcpy(newbuf, last_buf, buflen);
 
         // select a mutation to apply
-        switch (random() % 5)
+        switch (random() % 6)
         {
         case 0:
             mutate_random_byte(newbuf, buflen);
@@ -44,6 +44,9 @@ void GenChildren(
             break;
         case 4:
             crossover(newbuf, buflen, corpus);
+            break;
+        case 5:
+            duplicate_subsequence(newbuf, buflen);
             break;
         default:
             throw "Unreachable";
@@ -104,6 +107,21 @@ void crossover(uint8_t *buf, size_t buflen, Corpus *corpus)
     {
         buf[i] = co_parent->buf[i];
     }
+}
+
+void duplicate_subsequence(uint8_t *buf, size_t buflen)
+{
+    size_t src = static_cast<size_t>(random()) % buflen;
+    // end is exclusive
+    size_t end = src + static_cast<size_t>(random()) % (buflen - src);
+
+    size_t len = end - src;
+    size_t dst = static_cast<size_t>(random()) % (buflen - len);
+
+    uint8_t *tmp = new uint8_t[len];
+    memcpy(tmp, buf + src, len);
+    memcpy(buf + dst, tmp, len);
+    delete[] tmp;
 }
 
 }

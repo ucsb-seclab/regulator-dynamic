@@ -56,7 +56,12 @@ void CoverageTracker::Cover(uintptr_t src_addr, uintptr_t dst_addr)
     this->total++;
     const uint32_t bit_to_set = REGULATOR_FUZZ_TRANSFORM_ADDR(src_addr) ^
                                 REGULATOR_FUZZ_TRANSFORM_ADDR(dst_addr);
-    this->covmap[bit_to_set]++;
+
+    // protect from overflow by setting to MAX
+    if (this->covmap[bit_to_set] < UINT8_MAX)
+    {
+        this->covmap[bit_to_set]++;
+    }
 
     // mix into path hash
     struct hash_data data;
@@ -117,6 +122,7 @@ bool CoverageTracker::HasNewPath(CoverageTracker *other)
             return true;
         }
     }
+
     return false;
 }
 

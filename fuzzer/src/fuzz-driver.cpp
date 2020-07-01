@@ -4,17 +4,59 @@
 #include "fuzz/mutator.hpp"
 #include "fuzz-driver.hpp"
 #include "regexp-executor.hpp"
+#include "flags.hpp"
+#include "timer.hpp"
 
 #include <cstring>
 #include <random>
+#include <chrono>
 #include <iostream>
+#include <iomanip>
+
+namespace f = regulator::flags;
 
 namespace regulator
 {
 namespace fuzz
 {
 
-static const size_t N_CHILDREN_PER_PARENT = 100;
+static const size_t N_CHILDREN_PER_PARENT = 200;
+
+
+typedef struct {
+    std::chrono::steady_clock::time_point begin;
+    std::chrono::steady_clock::time_point deadline;
+    std::chrono::steady_clock::time_point last_screen_render;
+    Corpus *corpus;
+    CorpusEntry *worst_known_case;
+    bool exit_requested;
+} exec_context;
+
+
+/**
+ * A work-interrupt point, where we update some meta-information,
+ * like rendering output or toggling exit_requested for timeouts
+ */
+inline void work_interrupt(exec_context &ctx)
+{
+    // First, re-check for for timeout
+    auto now = std::chrono::steady_clock::now();
+    ctx.exit_requested = now >= ctx.deadline;
+
+    // Print stuff to screen if we haven't done that lately
+    if ((now - ctx.last_screen_render) > std::chrono::milliseconds(500))
+    {
+        auto elapsed = now - ctx.begin;
+        double seconds_elapsed = elapsed.count() / (static_cast<double>(std::nano::den));
+        std::cout << "Elapsed: " << std::setprecision(5) << std::setw(4) << seconds_elapsed << " ";
+
+        std::cout << "Corpus Size: " << ctx.corpus->Size() << " ";
+
+        std::cout << "Slowest: " << ctx.worst_known_case->ToString() << std::endl;
+
+        ctx.last_screen_render = now;
+    }
+}
 
 
 uint64_t Fuzz(
@@ -22,9 +64,19 @@ uint64_t Fuzz(
     regulator::executor::V8RegExp *regexp,
     uint8_t *outbuf, size_t strlen)
 {
-    Corpus corpus;
+    exec_context context;
     
-    // baseline: start with a string of random bytes
+    // Set up context (used at work-interrupt points)
+    Corpus corpus;
+    context.begin = std::chrono::steady_clock::now();
+    context.deadline = context.begin + std::chrono::seconds(regulator::flags::FLAG_timeout);
+    context.corpus = &corpus;
+    context.exit_requested = false;
+    
+    // for some reason ::min() causes some overflows that are annoying to handle
+    context.last_screen_render = context.begin - std::chrono::hours(10000);
+    
+    // Baseline: seed the corpus with 'aaaaaaa...'
     uint8_t *baseline = new uint8_t[strlen];
     memset(baseline, 'a', strlen);
 
@@ -45,17 +97,23 @@ uint64_t Fuzz(
 
     corpus.Record(baseline_entry);
 
-    uint8_t *tmp_fuzz_buff = new uint8_t[strlen];
+    context.worst_known_case = new CorpusEntry(*baseline_entry);
+
+
+    if (f::FLAG_debug)
+    {
+        std::cout << "Baseline established. Proceeding to main work loop." << std::endl;
+    }
 
     std::vector<CorpusEntry *> new_children;
     std::vector<uint8_t *> children;
 
-    for (size_t i=0; i<1024; i++)
+    for (size_t num_generations=0; !context.exit_requested; num_generations++)
     {
         // Iterate over each item in the corpus
-        for (size_t j=0; j < corpus.Size(); j++)
+        for (size_t i=0; i < corpus.Size() && !context.exit_requested; i++)
         {
-            CorpusEntry * parent = corpus.Get(j);
+            CorpusEntry * parent = corpus.Get(i);
 
             // Choose whether to use this entry as a parent
             
@@ -73,12 +131,12 @@ uint64_t Fuzz(
             }
 
             // Create children
-            GenChildren(&corpus, j, N_CHILDREN_PER_PARENT, children);
+            GenChildren(&corpus, i, N_CHILDREN_PER_PARENT, children);
 
             // Evaluate each child
-            for (size_t k = 0; k < children.size(); k++)
+            for (size_t j = 0; j < children.size() && !context.exit_requested; j++)
             {
-                uint8_t *child = children[k];
+                uint8_t *child = children[j];
 
                 result_code = regulator::executor::Exec(
                     regexp,
@@ -109,6 +167,20 @@ uint64_t Fuzz(
                         strlen,
                         new CoverageTracker(*result.coverage_tracker)
                     ));
+
+                    if (result.coverage_tracker->Total() >
+                            context.worst_known_case->GetCoverageTracker()->Total())
+                    {
+                        // this is the new known-worst-case
+                        delete context.worst_known_case;
+                        uint8_t *newbuf = new uint8_t[strlen];
+                        memcpy(newbuf, child, strlen);
+                        context.worst_known_case = new CorpusEntry(
+                            newbuf,
+                            strlen,
+                            new CoverageTracker(*result.coverage_tracker)
+                        );
+                    }
                 }
                 // Otherwise, no new behavior was discovered, delete the memory
                 else
@@ -118,32 +190,31 @@ uint64_t Fuzz(
             }
 
             children.clear();
+            work_interrupt(context);
         }
 
         // record new children into corpus
-        for (size_t k=0; k<new_children.size(); k++)
+        for (size_t j=0; j<new_children.size(); j++)
         {
-            corpus.Record(new_children[k]);
+            corpus.Record(new_children[j]);
         }
         new_children.clear();
 
-        std::cout << "Corpus size: " << corpus.Size() << std::endl;
-        CorpusEntry *most_good = corpus.MaxOpcount();
-        std::cout << "Most good: " << most_good->ToString() << std::endl;
-        CorpusEntry *arbitrary = corpus.GetOne();
-        std::cout << "Sample: " << arbitrary->ToString() << std::endl;
-
-        if ((i & (0x4 - 1)) == 0)
+        if (num_generations & (4 - 1) == 0)
         {
-            std::cout << "Compacting" << std::endl;
             corpus.Economize();
         }
+
+        // std::cout << "Corpus size: " << corpus.Size() << std::endl;
+        // CorpusEntry *most_good = corpus.MaxOpcount();
+        // std::cout << "Most good: " << most_good->ToString() << std::endl;
+        // CorpusEntry *arbitrary = corpus.GetOne();
+        // std::cout << "Sample: " << arbitrary->ToString() << std::endl;
     }
 
     delete[] baseline;
-    delete[] tmp_fuzz_buff;
 
-    return result.opcount;
+    return corpus.MaxOpcount()->coverage_tracker->Total();
 }
 
 }

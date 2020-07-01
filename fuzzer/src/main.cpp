@@ -5,8 +5,11 @@
 #include "argument-parser.hpp"
 #include "regexp-executor.hpp"
 #include "fuzz-driver.hpp"
+#include "flags.hpp"
 
 using namespace std;
+
+namespace f = regulator::flags;
 
 static const char *MY_ZONE_NAME = "MY_ZONE";
 
@@ -16,14 +19,21 @@ int main(int argc, char* argv[])
     // Read and store our arguments.
     regulator::ParsedArguments args = regulator::ParsedArguments::Parse(argc, argv);
 
+    if (f::FLAG_debug)
+    {
+        std::cout << "DEBUG enabled. Beginning fuzz run." << std::endl;
+    }
+
     // Initialize
     v8::Isolate *isolate = regulator::executor::Initialize();
     v8::HandleScope scope(isolate);
     v8::Local<v8::Context> ctx = v8::Context::New(isolate);
     ctx->Enter();
 
-
-    std::cout << "Compiling for regexp: " << args.target_regex << std::endl;
+    if (f::FLAG_debug)
+    {
+        std::cout << "Compiling for regexp: " << args.target_regex << std::endl;
+    }
 
     // Compile the regexp
     regulator::executor::V8RegExp regexp;
@@ -38,7 +48,10 @@ int main(int argc, char* argv[])
         exit(1);
     }
 
-    std::cout << "Compiled" << std::endl;
+    if (f::FLAG_debug)
+    {
+        std::cout << "Compiled, beginning fuzz" << std::endl;
+    }
 
     uint8_t *out = new uint8_t[args.strlen];
     uint64_t opcount = regulator::fuzz::Fuzz(isolate, &regexp, out, args.strlen);

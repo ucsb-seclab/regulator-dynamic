@@ -55,5 +55,11 @@ void bit_flip(uint8_t *buf, size_t buflen);
  */
 void crossover(uint8_t *buf, size_t buflen, Corpus *corpus);
 
+/**
+ * Select a substring of `buf` at random and replicate it elsewhere
+ * in `buf` (potentially overlapping)
+ */
+void duplicate_subsequence(uint8_t *buf, size_t buflen);
+
 }
 }
