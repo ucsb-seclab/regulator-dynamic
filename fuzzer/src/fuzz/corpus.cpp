@@ -104,6 +104,43 @@ void Corpus::Add(CorpusEntry *entry)
     this->entries.push_back(entry);
 
     this->coverage_upper_bound->Union(entry->coverage_tracker);
+
+    // Record the path hash in the hashtable
+
+    uint32_t short_path_hash = static_cast<uint32_t>(entry->coverage_tracker->PathHash());
+    size_t hashtable_slot = short_path_hash & (CORPUS_PATH_HASHTABLE_SIZE - 1);
+
+    auto slot = &(this->hashtable[hashtable_slot]);
+    for (size_t i=0; i<slot->size(); i++)
+    {
+        if (slot->at(i) == short_path_hash)
+        {
+            goto already_seen_hash;
+        }
+    }
+
+    // hash has not been seen before, so append
+    slot->push_back(short_path_hash);
+
+    already_seen_hash:
+    // do not add the hash a second time
+    ;
+}
+
+bool Corpus::IsRedundant(CoverageTracker *coverage_tracker) const
+{
+    uint32_t short_path_hash = static_cast<uint32_t>(coverage_tracker->PathHash());
+    size_t hashtable_slot = short_path_hash & (CORPUS_PATH_HASHTABLE_SIZE - 1);
+
+    auto slot = &(this->hashtable[hashtable_slot]);
+    for (size_t i=0; i<slot->size(); i++)
+    {
+        if (slot->at(i) == short_path_hash)
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 CorpusEntry *Corpus::GetOne()
@@ -156,6 +193,15 @@ bool Corpus::HasNewPath(CoverageTracker *coverage_tracker)
 
 void Corpus::Economize()
 {
+    // NOTE: this method also in-place recomputes the hashtable
+
+    // clear hashtable
+    for (size_t i=0; i<CORPUS_PATH_HASHTABLE_SIZE; i++)
+    {
+        this->hashtable[i].clear();
+    }
+
+    // set everything as not-redundant
     bool *redundants = new bool[this->entries.size()];
     for (size_t i=0; i < this->entries.size(); i++)
     {
@@ -165,29 +211,27 @@ void Corpus::Economize()
 
     for (size_t i=0; i<this->entries.size(); i++)
     {
-        if (redundants[i])
+        CorpusEntry *entry = this->entries[i];
+
+        uint32_t short_path_hash = static_cast<uint32_t>(entry->GetCoverageTracker()->PathHash());
+        size_t hashtable_slot = short_path_hash & (CORPUS_PATH_HASHTABLE_SIZE - 1);
+
+        auto slot = &(this->hashtable[hashtable_slot]);
+
+        for (size_t j=0; j<slot->size(); j++)
         {
-            // this is already redundant so don't bother
-            continue;
-        }
-
-        CorpusEntry *left = this->entries[i];
-
-        for (size_t j=i+1; j < this->entries.size(); j++)
-        {
-            if (redundants[j])
+            if (slot->at(j) == short_path_hash)
             {
-                // already redundant, don't bother
-                continue;
-            }
-
-            CorpusEntry *right = this->entries[j];
-
-            if (left->GetCoverageTracker()->IsEquivalent(right->GetCoverageTracker()))
-            {
-                redundants[j] = true;
+                // this is known redundant
+                redundants[i] = true;
+                goto known_redundant;
             }
         }
+
+        slot->push_back(short_path_hash);
+
+        known_redundant:
+        ;
     }
 
     std::vector<CorpusEntry *> not_redundant;

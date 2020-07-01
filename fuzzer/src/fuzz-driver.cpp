@@ -20,7 +20,7 @@ namespace regulator
 namespace fuzz
 {
 
-static const size_t N_CHILDREN_PER_PARENT = 200;
+static const size_t N_CHILDREN_PER_PARENT = 100;
 
 
 typedef struct {
@@ -160,7 +160,10 @@ uint64_t Fuzz(
 
                 // If this child uncovered new behavior, then add it to new_children
                 // (later added to corpus, which assumes ownership)
-                if (corpus.HasNewPath(result.coverage_tracker))
+                if (
+                        parent->GetCoverageTracker()->HasNewPath(result.coverage_tracker) &&
+                        !corpus.IsRedundant(result.coverage_tracker)
+                    )
                 {
                     new_children.push_back(new CorpusEntry(
                         child,
@@ -200,10 +203,10 @@ uint64_t Fuzz(
         }
         new_children.clear();
 
-        if (num_generations & (4 - 1) == 0)
-        {
-            corpus.Economize();
-        }
+        corpus.Economize();
+        // if (num_generations & (4 - 1) == 0)
+        // {
+        // }
 
         // std::cout << "Corpus size: " << corpus.Size() << std::endl;
         // CorpusEntry *most_good = corpus.MaxOpcount();

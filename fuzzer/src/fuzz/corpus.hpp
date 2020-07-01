@@ -20,6 +20,12 @@ namespace regulator
 namespace fuzz
 {
 
+// The number of hashtable slots to have for tracking corpus
+// entry path hashes.
+//
+// Keep a multiple of 2.
+const size_t CORPUS_PATH_HASHTABLE_SIZE = 1024;
+
 /**
  * A single entry in the corpus, ie, a string.
  * Also contains some meta-information about past
@@ -103,6 +109,14 @@ public:
      */
     void Economize();
 
+
+    /**
+     * Returns true if we likely already have an entry
+     * in the corpus for the given execution's trace.
+     */
+    bool IsRedundant(CoverageTracker *coverage_tracker) const;
+
+
     /**
      * The number of entries in the corpus
      */
@@ -124,6 +138,8 @@ private:
     CoverageTracker *coverage_upper_bound;
 
     std::vector<CorpusEntry*> entries;
+
+    std::vector<uint32_t> hashtable[CORPUS_PATH_HASHTABLE_SIZE];
 };
 
 }
