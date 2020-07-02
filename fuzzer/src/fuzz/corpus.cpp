@@ -205,6 +205,11 @@ CorpusEntry *Corpus::MaxOpcount()
 
 bool Corpus::MaximizesUpperBound(CoverageTracker *coverage_tracker)
 {
+    if (coverage_tracker == nullptr)
+    {
+        return false;
+    }
+
     return this->coverage_upper_bound->MaximizesEdge(coverage_tracker);
 }
 

@@ -121,7 +121,7 @@ uint64_t Fuzz(
             
             // alpha = prob(selected) * 1024 - 1
             uint64_t alpha = 9; // approx. 1%
-            if (corpus.MaximizesUpperBound(parent->coverage_tracker))
+            if (corpus.MaximizesUpperBound(parent->GetCoverageTracker()))
             {
                 alpha = 1024 - 1;
             }
