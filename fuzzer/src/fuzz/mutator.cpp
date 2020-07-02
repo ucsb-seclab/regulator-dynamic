@@ -4,6 +4,7 @@
 #include <random>
 #include <cmath>
 #include <cstring>
+#include <iostream>
 
 namespace regulator
 {

@@ -4,6 +4,7 @@
 #include <vector>
 #include <random>
 #include <iostream>
+#include <iomanip>
 #include <sstream>
 
 namespace regulator
@@ -21,6 +22,14 @@ CorpusEntry::CorpusEntry(
     this->coverage_tracker = coverage_tracker;
 }
 
+CorpusEntry::CorpusEntry(CorpusEntry &other)
+{
+    this->buflen = other.buflen;
+    this->buf = new uint8_t[other.buflen];
+    memcpy(this->buf, other.buf, other.buflen);
+    this->coverage_tracker = new CoverageTracker(*other.coverage_tracker);
+}
+
 CorpusEntry::~CorpusEntry()
 {
     delete[] this->buf;
@@ -30,8 +39,9 @@ CorpusEntry::~CorpusEntry()
 std::string CorpusEntry::ToString() const
 {
     std::ostringstream out;
-    out << "<CorpusEntry ";
-    out << "word=\"";
+    out << "<CorpusEntry @0x" << std::hex << (uintptr_t)(this);
+    out << std::dec;
+    out << " word=\"";
     for (size_t i = 0; i < this->buflen; i++)
     {
         char c = this->buf[i];
@@ -53,9 +63,9 @@ std::string CorpusEntry::ToString() const
         }
         else
         {
-            out.width(2);
-            out.fill('0');
-            out << "\\x" << std::hex << static_cast<uint16_t>(c);
+            out << "\\x";
+            out << std::setw(2) << std::setfill('0') << std::hex << static_cast<uint16_t>(c);
+            out << std::dec << std::setw(0);
         }
         
     }
@@ -107,20 +117,20 @@ void Corpus::Add(CorpusEntry *entry)
 
     // Record the path hash in the hashtable
 
-    uint32_t short_path_hash = static_cast<uint32_t>(entry->coverage_tracker->PathHash());
-    size_t hashtable_slot = short_path_hash & (CORPUS_PATH_HASHTABLE_SIZE - 1);
+    path_hash_t path_hash = entry->coverage_tracker->PathHash();
+    size_t hashtable_slot = static_cast<path_hash_t>(path_hash & (CORPUS_PATH_HASHTABLE_SIZE - 1));
 
     auto slot = &(this->hashtable[hashtable_slot]);
     for (size_t i=0; i<slot->size(); i++)
     {
-        if (slot->at(i) == short_path_hash)
+        if (slot->at(i) == path_hash)
         {
             goto already_seen_hash;
         }
     }
 
     // hash has not been seen before, so append
-    slot->push_back(short_path_hash);
+    slot->push_back(path_hash);
 
     already_seen_hash:
     // do not add the hash a second time
@@ -129,13 +139,13 @@ void Corpus::Add(CorpusEntry *entry)
 
 bool Corpus::IsRedundant(CoverageTracker *coverage_tracker) const
 {
-    uint32_t short_path_hash = static_cast<uint32_t>(coverage_tracker->PathHash());
-    size_t hashtable_slot = short_path_hash & (CORPUS_PATH_HASHTABLE_SIZE - 1);
+    path_hash_t path_hash = coverage_tracker->PathHash();
+    size_t hashtable_slot = static_cast<size_t>(path_hash & (CORPUS_PATH_HASHTABLE_SIZE - 1));
 
     auto slot = &(this->hashtable[hashtable_slot]);
     for (size_t i=0; i<slot->size(); i++)
     {
-        if (slot->at(i) == short_path_hash)
+        if (slot->at(i) == path_hash)
         {
             return true;
         }
@@ -208,37 +218,38 @@ void Corpus::Economize()
         redundants[i] = false;
     }
 
-
     for (size_t i=0; i<this->entries.size(); i++)
     {
         CorpusEntry *entry = this->entries[i];
 
-        uint32_t short_path_hash = static_cast<uint32_t>(entry->GetCoverageTracker()->PathHash());
-        size_t hashtable_slot = short_path_hash & (CORPUS_PATH_HASHTABLE_SIZE - 1);
+        path_hash_t h = entry->GetCoverageTracker()->PathHash();
 
-        auto slot = &(this->hashtable[hashtable_slot]);
+        auto slot = &(this->hashtable[h & (CORPUS_PATH_HASHTABLE_SIZE - 1)]);
 
         for (size_t j=0; j<slot->size(); j++)
         {
-            if (slot->at(j) == short_path_hash)
+            if (slot->at(j) == h)
             {
-                // this is known redundant
                 redundants[i] = true;
                 goto known_redundant;
             }
         }
 
-        slot->push_back(short_path_hash);
+        slot->push_back(h);
 
         known_redundant:
         ;
     }
+
+    // recompute max upper bound while we're iterating
+    this->coverage_upper_bound->Clear();
 
     std::vector<CorpusEntry *> not_redundant;
     for (size_t i=0; i<this->entries.size(); i++)
     {
         if (!redundants[i])
         {
+            this->coverage_upper_bound->Union(this->entries[i]->GetCoverageTracker());
             not_redundant.push_back(this->entries[i]);
         }
     }

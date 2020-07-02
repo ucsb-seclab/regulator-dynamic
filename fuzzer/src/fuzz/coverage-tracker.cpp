@@ -5,6 +5,7 @@ extern "C" {
 }
 
 #include <iostream>
+#include <iomanip>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -69,7 +70,7 @@ void CoverageTracker::Cover(uintptr_t src_addr, uintptr_t dst_addr)
     data.src_addr = src_addr;
     data.dst_addr = dst_addr;
     path_hash_t out;
-    MurmurHash3_x64_128(&data, sizeof(data), 0 /* seed */, &out);
+    MurmurHash3_x64_128(&data, sizeof(data), 0xDEADBEEF /* seed */, &out);
     this->path_hash = out;
 }
 
@@ -100,6 +101,7 @@ uint64_t CoverageTracker::Total()
 void CoverageTracker::Clear()
 {
     memset(this->covmap, 0, num_bytes_to_alloc);
+    this->total = 0;
 }
 
 

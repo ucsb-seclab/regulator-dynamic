@@ -2,6 +2,7 @@
 #include <cctype>
 #include <string>
 #include <iostream>
+#include <random>
 
 #include "argument-parser.hpp"
 #include "cxxopts.hpp"
@@ -22,6 +23,7 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
         ("r,regexp", "The regexp to fuzz", cxxopts::value<std::string>())
         ("l,length", "The length of the string buffer to fuzz", cxxopts::value<uint32_t>()->default_value("0"))
         ("t,timeout", "Timeout, in number of seconds", cxxopts::value<uint32_t>()->default_value("0"))
+        ("s,seed", "Seed for random number generator", cxxopts::value<uint32_t>()->default_value("0"))
         ("debug", "Enable debug mode", cxxopts::value<bool>()->default_value("False"))
         ("h,help", "Print help", cxxopts::value<bool>()->default_value("False"));
 
@@ -62,6 +64,16 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
         std::cerr << std::endl;
         std::cerr << options.help() << std::endl;
         exit(1);
+    }
+
+    uint32_t seed = parsed["seed"].as<uint32_t>();
+    if (seed > 0)
+    {
+        if (regulator::flags::FLAG_debug)
+        {
+            std::cout << "Seeding random number generator with " << seed << std::endl;
+        }
+        srand(seed);
     }
 
     return ret;

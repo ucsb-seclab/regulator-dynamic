@@ -39,6 +39,7 @@ public:
      * Takes ownership of the params.
      */
     CorpusEntry(uint8_t *buf, size_t buflen, CoverageTracker *coverage_tracker);
+    CorpusEntry(CorpusEntry &other);
 
     ~CorpusEntry();
 
@@ -139,7 +140,7 @@ private:
 
     std::vector<CorpusEntry*> entries;
 
-    std::vector<uint32_t> hashtable[CORPUS_PATH_HASHTABLE_SIZE];
+    std::vector<path_hash_t> hashtable[CORPUS_PATH_HASHTABLE_SIZE];
 };
 
 }
