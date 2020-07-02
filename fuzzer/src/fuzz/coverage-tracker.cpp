@@ -16,22 +16,22 @@ namespace regulator
 namespace fuzz
 {
 
-// NOTE: I believe this allocs one too many bytes
-constexpr uint32_t num_bytes_to_alloc = 1 << MAX_CODE_SIZE;
+// NOTE: I believe this allocs one too many slots
+constexpr uint32_t num_slots_to_alloc = 1 << MAX_CODE_SIZE;
 
 CoverageTracker::CoverageTracker()
 {
     this->path_hash = 0;
     this->total = 0;
-    this->covmap = new uint8_t[num_bytes_to_alloc];
+    this->covmap = new cov_t[num_slots_to_alloc];
     this->Clear();
 }
 
 CoverageTracker::CoverageTracker(const CoverageTracker &other)
 {
     this->total = other.total;
-    this->covmap = new uint8_t[num_bytes_to_alloc];
-    memcpy(this->covmap, other.covmap, num_bytes_to_alloc);
+    this->covmap = new cov_t[num_slots_to_alloc];
+    memcpy(this->covmap, other.covmap, num_slots_to_alloc * sizeof(cov_t));
     this->path_hash = other.path_hash;
 }
 
@@ -59,7 +59,7 @@ void CoverageTracker::Cover(uintptr_t src_addr, uintptr_t dst_addr)
                                 REGULATOR_FUZZ_TRANSFORM_ADDR(dst_addr);
 
     // protect from overflow by setting to MAX
-    if (this->covmap[bit_to_set] < UINT8_MAX)
+    if (this->covmap[bit_to_set] < COV_MAX)
     {
         this->covmap[bit_to_set]++;
     }
@@ -82,7 +82,7 @@ void CoverageTracker::Cover(uintptr_t addr)
 uint32_t CoverageTracker::Popcount()
 {
     uint32_t ret = 0;
-    for (size_t i=0; i < num_bytes_to_alloc; i++)
+    for (size_t i=0; i < num_slots_to_alloc; i++)
     {
         // todo: do some loop unrolling here
         if (this->covmap[i] != 0)
@@ -100,14 +100,14 @@ uint64_t CoverageTracker::Total()
 
 void CoverageTracker::Clear()
 {
-    memset(this->covmap, 0, num_bytes_to_alloc);
+    memset(this->covmap, 0, num_slots_to_alloc * sizeof(cov_t));
     this->total = 0;
 }
 
 
 void CoverageTracker::Union(CoverageTracker *other)
 {
-    for (size_t i=0; i < num_bytes_to_alloc; i++)
+    for (size_t i=0; i < num_slots_to_alloc; i++)
     {
         this->covmap[i] = std::max(this->covmap[i], other->covmap[i]);
     }
@@ -117,7 +117,7 @@ void CoverageTracker::Union(CoverageTracker *other)
 bool CoverageTracker::HasNewPath(CoverageTracker *other)
 {
     // Check if `other` has ANY more coverage
-    for (size_t i=0; i < num_bytes_to_alloc; i++)
+    for (size_t i=0; i < num_slots_to_alloc; i++)
     {
         if (other->covmap[i] > this->covmap[i])
         {
@@ -130,7 +130,7 @@ bool CoverageTracker::HasNewPath(CoverageTracker *other)
 
 bool CoverageTracker::MaximizesEdge(CoverageTracker *other) const
 {
-    for (size_t i=0; i < num_bytes_to_alloc; i++)
+    for (size_t i=0; i < num_slots_to_alloc; i++)
     {
         if (this->covmap[i] != 0 && other->covmap[i] >= this->covmap[i])
         {

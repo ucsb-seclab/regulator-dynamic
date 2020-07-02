@@ -27,6 +27,13 @@ constexpr uint32_t CODE_MASK = (1 << MAX_CODE_SIZE) - 1;
 typedef __int128_t path_hash_t;
 
 /**
+ * Tracks coverage of a single cfg edge
+ */
+typedef uint8_t cov_t;
+
+constexpr cov_t COV_MAX = ~static_cast<cov_t>(0);
+
+/**
  * AFL-style coverage tracker.
  * 
  * Coverage is approximate. It is assumed that program
@@ -103,7 +110,7 @@ public:
     };
 
 private:
-    uint8_t *covmap;
+    cov_t *covmap;
     uint64_t total;
     path_hash_t path_hash;
 };
