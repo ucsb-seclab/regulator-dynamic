@@ -155,12 +155,12 @@ bool Corpus::IsRedundant(CoverageTracker *coverage_tracker) const
 
 CorpusEntry *Corpus::GetOne()
 {
-    if (this->entries.size() < 1)
+    if (this->Size() < 1)
     {
         return nullptr;
     }
     
-    return this->entries[random() % this->entries.size()];
+    return this->Get(random() % this->Size());
 }
 
 CorpusEntry *Corpus::Get(size_t i)
@@ -175,17 +175,17 @@ CorpusEntry *Corpus::Get(size_t i)
 
 CorpusEntry *Corpus::MaxOpcount()
 {
-    if (this->entries.size() < 1)
+    if (this->Size() < 1)
     {
         return nullptr;
     }
 
-    CorpusEntry *most = this->entries[0];
-    for (size_t i=1; i<this->entries.size(); i++)
+    CorpusEntry *most = this->Get(0);
+    for (size_t i=1; i<this->Size(); i++)
     {
-        if (most->coverage_tracker->Total() < this->entries[i]->coverage_tracker->Total())
+        if (most->coverage_tracker->Total() < this->Get(i)->coverage_tracker->Total())
         {
-            most = this->entries[i];
+            most = this->Get(i);
         }
     }
     return most;
