@@ -140,6 +140,11 @@ private:
 
     std::vector<CorpusEntry*> entries;
 
+    /**
+     * Records all entries which have been economized
+     */
+    std::vector<CorpusEntry*> economized_entries;
+
     std::vector<path_hash_t> hashtable[CORPUS_PATH_HASHTABLE_SIZE];
 };
 

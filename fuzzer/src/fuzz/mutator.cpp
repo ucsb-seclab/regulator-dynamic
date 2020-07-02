@@ -53,7 +53,7 @@ void GenChildren(
             throw "Unreachable";
         }
 
-        // last_buf = newbuf;
+        last_buf = newbuf;
         vec.push_back(newbuf);
     }
 }

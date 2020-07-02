@@ -110,6 +110,8 @@ uint64_t Fuzz(
 
     for (size_t num_generations=0; !context.exit_requested; num_generations++)
     {
+        work_interrupt(context);
+
         // Iterate over each item in the corpus
         for (size_t i=0; i < corpus.Size() && !context.exit_requested; i++)
         {

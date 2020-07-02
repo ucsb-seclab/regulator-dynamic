@@ -101,6 +101,13 @@ Corpus::~Corpus()
         delete this->entries.at(this->entries.size() - 1);
         this->entries.pop_back();
     }
+
+    while (this->economized_entries.size() > 0)
+    {
+        delete this->economized_entries.at(this->economized_entries.size() - 1);
+        this->entries.pop_back();
+    }
+
     delete this->coverage_upper_bound;
 }
 
@@ -165,12 +172,17 @@ CorpusEntry *Corpus::GetOne()
 
 CorpusEntry *Corpus::Get(size_t i)
 {
-    if (i >= this->entries.size())
+    if (i >= this->Size())
     {
         return nullptr;
     }
 
-    return this->entries[i];
+    if (i <= this->entries.size())
+    {
+        return this->entries[i];
+    }
+
+    return this->economized_entries[i - this->entries.size()];
 }
 
 CorpusEntry *Corpus::MaxOpcount()
@@ -203,13 +215,11 @@ bool Corpus::HasNewPath(CoverageTracker *coverage_tracker)
 
 void Corpus::Economize()
 {
-    // NOTE: this method also in-place recomputes the hashtable
+    // NOTE we make the assumption no CorpusEntry in `entries` has a hash
+    // equal to a CorpusEntry in `economized_entries`
 
-    // clear hashtable
-    for (size_t i=0; i<CORPUS_PATH_HASHTABLE_SIZE; i++)
-    {
-        this->hashtable[i].clear();
-    }
+    // Create new hashtable for this procedure
+    std::vector<path_hash_t> *tmp_hashtable = new std::vector<path_hash_t>[CORPUS_PATH_HASHTABLE_SIZE];
 
     // set everything as not-redundant
     bool *redundants = new bool[this->entries.size()];
@@ -224,7 +234,7 @@ void Corpus::Economize()
 
         path_hash_t h = entry->GetCoverageTracker()->PathHash();
 
-        auto slot = &(this->hashtable[h & (CORPUS_PATH_HASHTABLE_SIZE - 1)]);
+        auto slot = &(tmp_hashtable[h & (CORPUS_PATH_HASHTABLE_SIZE - 1)]);
 
         for (size_t j=0; j<slot->size(); j++)
         {
@@ -241,28 +251,23 @@ void Corpus::Economize()
         ;
     }
 
-    // recompute max upper bound while we're iterating
-    this->coverage_upper_bound->Clear();
-
-    std::vector<CorpusEntry *> not_redundant;
     for (size_t i=0; i<this->entries.size(); i++)
     {
         if (!redundants[i])
         {
-            this->coverage_upper_bound->Union(this->entries[i]->GetCoverageTracker());
-            not_redundant.push_back(this->entries[i]);
+            this->economized_entries.push_back(this->entries[i]);
         }
     }
 
     this->entries.clear();
-    this->entries.insert(this->entries.begin(), not_redundant.begin(), not_redundant.end());
 
     delete[] redundants;
+    delete[] tmp_hashtable;
 }
 
 size_t Corpus::Size() const
 {
-    return this->entries.size();
+    return this->entries.size() + this->economized_entries.size();
 }
 
 void Corpus::EvictOne()
