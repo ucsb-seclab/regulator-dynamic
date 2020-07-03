@@ -21,7 +21,7 @@ namespace executor
 
 enum Result {
     kSuccess,
-    kNotValidUtf8,
+    kNotValidString,
     kCouldNotCompile,
     kBadStrRepresentation,
 };
@@ -67,7 +67,7 @@ Result Compile(const char *pattern, const char *flags, V8RegExp *out);
 
 Result Exec(
     V8RegExp *regexp,
-    char *subject,
+    const uint8_t *subject,
     size_t subject_len,
     V8RegExpResult *out,
     EnforceRepresentation rep = kAnyRepresentation);

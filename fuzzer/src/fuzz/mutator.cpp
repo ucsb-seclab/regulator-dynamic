@@ -19,6 +19,12 @@ const char interesting[] = {
     'a', 'z', 'A', 'Z',             // letters
     '1', '2',                       // digits
     '~', '!', '\\', '/', '"', '\'', // special chars
+    '\xe8', /* e with grave accent */
+    '\xbe', /* three quarters mark */
+    '\xb2', /* superscript two */
+    '\x80', /* euro */
+    '\xdc', /* uppercase U with umlaut */
+    '\xd7', /* times symbol */
 };
 
 void GenChildren(

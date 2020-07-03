@@ -44,7 +44,7 @@ std::string CorpusEntry::ToString() const
     out << " word=\"";
     for (size_t i = 0; i < this->buflen; i++)
     {
-        char c = this->buf[i];
+        unsigned char c = this->buf[i];
         if (' ' <= c && c <= '~')
         {
             out << c;

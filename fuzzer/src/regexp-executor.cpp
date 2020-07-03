@@ -123,7 +123,7 @@ Result Compile(const char *pattern, const char *flags, V8RegExp *out)
     v8::internal::Handle<v8::internal::String> h_pattern;
     if (!maybe_h_pattern.ToHandle(&h_pattern))
     {
-        return Result::kNotValidUtf8;
+        return Result::kNotValidString;
     }
 
     // TODO make flags useful
@@ -169,7 +169,7 @@ Result Compile(const char *pattern, const char *flags, V8RegExp *out)
 
 Result Exec(
     V8RegExp *regexp,
-    char *subject,
+    const uint8_t *subject,
     size_t subject_len,
     V8RegExpResult *out,
     EnforceRepresentation rep)
@@ -187,14 +187,14 @@ Result Exec(
     }
 
     v8::internal::MaybeHandle<v8::internal::String> maybe_h_subject = i_isolate->factory()
-        ->NewStringFromUtf8(
-            v8::internal::VectorOf<char>(subject, subject_len)
+        ->NewStringFromOneByte(
+            v8::internal::VectorOf<const uint8_t>(subject, subject_len)
         );
 
     v8::internal::Handle<v8::internal::String> h_subject;
     if (!maybe_h_subject.ToHandle(&h_subject))
     {
-        return Result::kNotValidUtf8;
+        return Result::kNotValidString;
     }
 
     if (rep != kAnyRepresentation)
