@@ -24,7 +24,7 @@ namespace fuzz
 // entry path hashes.
 //
 // Keep a multiple of 2.
-const size_t CORPUS_PATH_HASHTABLE_SIZE = 1024;
+const size_t CORPUS_PATH_HASHTABLE_SIZE = 4096;
 
 /**
  * A single entry in the corpus, ie, a string.
@@ -42,6 +42,12 @@ public:
     CorpusEntry(CorpusEntry &other);
 
     ~CorpusEntry();
+
+    /**
+     * Gets the number of bytes this object and its members
+     * occupy in RAM.
+     */
+    size_t MemoryFootprint() const;
 
     inline CoverageTracker *GetCoverageTracker()
     {
@@ -117,6 +123,19 @@ public:
      */
     bool IsRedundant(CoverageTracker *coverage_tracker) const;
 
+    /**
+     * Gets the number of bytes this object and its members
+     * occupy in RAM.
+     */
+    size_t MemoryFootprint() const;
+
+    /**
+     * Gets the percentage of slots which are non-zero in the
+     * upper-bound coverage map.
+     * 
+     * Returns a number between 0 and 1, inclusive.
+     */
+    double Residency() const;
 
     /**
      * The number of entries in the corpus

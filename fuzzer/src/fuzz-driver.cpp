@@ -54,6 +54,37 @@ inline void work_interrupt(exec_context &ctx)
 
         std::cout << "Slowest: " << ctx.worst_known_case->ToString() << std::endl;
 
+        if (f::FLAG_debug)
+        {
+            std::cout << "DEBUG corpus mem=";
+            
+            // Print memory footprint in more readable units (kb, mb, etc...)
+            size_t mem_footprint = ctx.corpus->MemoryFootprint();
+
+            if (mem_footprint <= 1024)
+            {
+                std::cout << mem_footprint << "b ";
+            }
+            else if (mem_footprint <= 1024 * 1024)
+            {
+                std::cout << (mem_footprint / 1024) << "kb ";
+            }
+            else if (mem_footprint <= 1024 * 1024 * 1024)
+            {
+                std::cout << (mem_footprint / (1024 * 1024)) << "mb ";
+            }
+            else
+            {
+                std::cout << (mem_footprint / (1024 * 1024 * 1024)) << "gb ";
+            }
+
+            // Print the residency of the upper-bound coverage map
+            double residency = ctx.corpus->Residency() * 100;
+            std::cout << "residency=";
+            std::cout << std::setprecision(4) << std::setw(5) << std::setfill(' ') << residency;
+            std::cout << std::setw(0) << "%" << std::endl;
+        }
+
         ctx.last_screen_render = now;
     }
 }
@@ -102,7 +133,7 @@ uint64_t Fuzz(
 
     if (f::FLAG_debug)
     {
-        std::cout << "Baseline established. Proceeding to main work loop." << std::endl;
+        std::cout << "DEBUG Baseline established. Proceeding to main work loop." << std::endl;
     }
 
     std::vector<CorpusEntry *> new_children;

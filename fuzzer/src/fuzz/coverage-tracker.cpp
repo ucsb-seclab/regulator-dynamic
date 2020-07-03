@@ -74,24 +74,12 @@ void CoverageTracker::Cover(uintptr_t src_addr, uintptr_t dst_addr)
     this->path_hash = out;
 }
 
+
 void CoverageTracker::Cover(uintptr_t addr)
 {
     this->Cover(addr, addr);
 }
 
-uint32_t CoverageTracker::Popcount()
-{
-    uint32_t ret = 0;
-    for (size_t i=0; i < num_slots_to_alloc; i++)
-    {
-        // todo: do some loop unrolling here
-        if (this->covmap[i] != 0)
-        {
-            ret++;
-        }
-    }
-    return ret;
-}
 
 uint64_t CoverageTracker::Total()
 {
@@ -116,7 +104,14 @@ void CoverageTracker::Union(CoverageTracker *other)
 
 bool CoverageTracker::HasNewPath(CoverageTracker *other)
 {
-    // Check if `other` has ANY more coverage
+    // By the pigeonhole principle, if `other` has more total CFG
+    // transitions then it MUST explore some new behavior
+    if (other->Total() > this->Total())
+    {
+        return true;
+    }
+
+    // Check if `other` has ANY more coverage on an individual
     for (size_t i=0; i < num_slots_to_alloc; i++)
     {
         if (other->covmap[i] > this->covmap[i])
@@ -137,6 +132,27 @@ bool CoverageTracker::MaximizesEdge(CoverageTracker *other) const
             return true;
         }
     }
+}
+
+size_t CoverageTracker::MemoryFootprint() const
+{
+    return sizeof(CoverageTracker) + sizeof(cov_t) * num_slots_to_alloc;
+}
+
+
+double CoverageTracker::Residency() const
+{
+    size_t num_occupied_slots = 0;
+    for (size_t i=0; i < num_slots_to_alloc; i++)
+    {
+        // todo: do some loop unrolling here
+        if (this->covmap[i] != 0)
+        {
+            num_occupied_slots++;
+        }
+    }
+
+    return num_occupied_slots / static_cast<double>(num_slots_to_alloc);
 }
 
 }

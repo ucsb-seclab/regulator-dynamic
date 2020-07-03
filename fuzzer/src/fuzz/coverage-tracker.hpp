@@ -5,6 +5,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstring>
 
 namespace regulator
 {
@@ -14,7 +15,7 @@ namespace fuzz
 /**
  * The number of pc address (least-significant) bits to use.
  */
-const uint32_t MAX_CODE_SIZE = 16;
+const uint32_t MAX_CODE_SIZE = 14;
 
 /**
  * A bitmask for post-shift addresses
@@ -108,6 +109,19 @@ public:
     {
         return this->path_hash;
     };
+
+    /**
+     * Gets the number of bytes this object and its members
+     * occupy in RAM.
+     */
+    size_t MemoryFootprint() const;
+
+    /**
+     * Gets the percentage of slots which are non-zero.
+     * 
+     * Returns a number between 0 and 1, inclusive.
+     */
+    double Residency() const;
 
 private:
     cov_t *covmap;

@@ -32,7 +32,7 @@ int main(int argc, char* argv[])
 
     if (f::FLAG_debug)
     {
-        std::cout << "Compiling for regexp: " << args.target_regex << std::endl;
+        std::cout << "DEBUG Compiling for regexp: " << args.target_regex << std::endl;
     }
 
     // Compile the regexp
@@ -50,7 +50,7 @@ int main(int argc, char* argv[])
 
     if (f::FLAG_debug)
     {
-        std::cout << "Compiled, beginning fuzz" << std::endl;
+        std::cout << "DEBUG Compiled, beginning fuzz" << std::endl;
     }
 
     uint8_t *out = new uint8_t[args.strlen];

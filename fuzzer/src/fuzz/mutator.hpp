@@ -61,5 +61,10 @@ void crossover(uint8_t *buf, size_t buflen, Corpus *corpus);
  */
 void duplicate_subsequence(uint8_t *buf, size_t buflen);
 
+
+/**
+ * Select a random character to replace with a "special" char
+ */
+void replace_with_special(uint8_t *buf, size_t buflen);
 }
 }

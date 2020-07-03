@@ -37,6 +37,11 @@ def main():
         help='The number of re-seeded runs to make (default 1)',
     )
 
+    parser.add_argument(
+        '-d', '--debug',
+        action='store_true'
+    )
+
     args = parser.parse_args()
 
     if args.REGEXP == '':
@@ -65,14 +70,19 @@ def main():
         fuzz_progress_elapsed = []
         fuzz_progress_maxcost = []
 
+        prog_args = [
+            './build/fuzzer',
+            '-l', str(args.length),
+            '-r', args.REGEXP,
+            '-t', str(args.timeout),
+            '-s', str(i * 2 + 100),
+        ]
+
+        if args.debug:
+            prog_args.append('--debug')
+
         prog = subprocess.Popen(
-            [
-                './build/fuzzer',
-                '-l', str(args.length),
-                '-r', args.REGEXP,
-                '-t', str(args.timeout),
-                '-s', str(i * 2 + 100),
-            ],
+            prog_args,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )

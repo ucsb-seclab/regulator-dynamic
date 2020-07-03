@@ -71,7 +71,7 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
     {
         if (regulator::flags::FLAG_debug)
         {
-            std::cout << "Seeding random number generator with " << seed << std::endl;
+            std::cout << "DEBUG Seeding random number generator with " << seed << std::endl;
         }
         srand(seed);
     }

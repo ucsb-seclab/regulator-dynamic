@@ -11,6 +11,16 @@ namespace regulator
 namespace fuzz
 {
 
+/**
+ * Contains interesting chars to insert
+ */
+const char interesting[] = {
+    ' ', '\t', '\n', '\r', '\v',    // whitespaces
+    'a', 'z', 'A', 'Z',             // letters
+    '1', '2',                       // digits
+    '~', '!', '\\', '/', '"', '\'', // special chars
+};
+
 void GenChildren(
     Corpus *corpus,
     size_t parent_idx,
@@ -29,7 +39,7 @@ void GenChildren(
         memcpy(newbuf, last_buf, buflen);
 
         // select a mutation to apply
-        switch (random() % 6)
+        switch (random() % 7)
         {
         case 0:
             mutate_random_byte(newbuf, buflen);
@@ -48,6 +58,9 @@ void GenChildren(
             break;
         case 5:
             duplicate_subsequence(newbuf, buflen);
+            break;
+        case 6:
+            replace_with_special(newbuf, buflen);
             break;
         default:
             throw "Unreachable";
@@ -123,6 +136,13 @@ void duplicate_subsequence(uint8_t *buf, size_t buflen)
     memcpy(tmp, buf + src, len);
     memcpy(buf + dst, tmp, len);
     delete[] tmp;
+}
+
+void replace_with_special(uint8_t *buf, size_t buflen)
+{
+    char c = interesting[random() % (sizeof(interesting))];
+    size_t i = static_cast<size_t>(random()) % buflen;
+    buf[i] = c;
 }
 
 }

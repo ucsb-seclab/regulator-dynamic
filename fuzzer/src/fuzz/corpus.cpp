@@ -89,6 +89,13 @@ std::string CorpusEntry::ToString() const
     return out.str();
 }
 
+
+size_t CorpusEntry::MemoryFootprint() const
+{
+    return sizeof(CorpusEntry) + sizeof(*buf) * this->buflen + this->coverage_tracker->MemoryFootprint();
+}
+
+
 Corpus::Corpus()
 {
     this->coverage_upper_bound = new CoverageTracker();
@@ -262,6 +269,10 @@ void Corpus::Economize()
         {
             this->economized_entries.push_back(this->entries[i]);
         }
+        else
+        {
+            delete this->entries[i];
+        }
     }
 
     this->entries.clear();
@@ -269,6 +280,37 @@ void Corpus::Economize()
     delete[] redundants;
     delete[] tmp_hashtable;
 }
+
+size_t Corpus::MemoryFootprint() const
+{
+    size_t ret = 0;
+    ret += sizeof(Corpus);
+    ret += this->coverage_upper_bound->MemoryFootprint();
+
+    for (size_t i=0; i<this->entries.size(); i++)
+    {
+        ret += this->entries[i]->MemoryFootprint();
+    }
+
+    for (size_t i=0; i<this->economized_entries.size(); i++)
+    {
+        ret += this->economized_entries[i]->MemoryFootprint();
+    }
+
+    for (size_t i=0; i<CORPUS_PATH_HASHTABLE_SIZE; i++)
+    {
+        ret += this->hashtable[i].size() * sizeof(path_hash_t);
+    }
+
+    return ret;
+}
+
+
+double Corpus::Residency() const
+{
+    return this->coverage_upper_bound->Residency();
+}
+
 
 size_t Corpus::Size() const
 {
