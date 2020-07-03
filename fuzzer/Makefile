@@ -1,3 +1,6 @@
+EXTRA_DEFS=
+# EXTRA_DEFS += -DREG_PROFILE # profile execution
+
 DEFINES=
 DEFINES += -DV8_EMBEDDED_BUILTINS
 DEFINES += -DV8_GYP_BUILD
@@ -109,7 +112,6 @@ FUZZER_DEPS = build/main.o
 FUZZER_DEPS += ${FUZZER_DEPS_FUZZ_OS}
 FUZZER_DEPS += build/argument-parser.o
 FUZZER_DEPS += build/regexp-executor.o
-# FUZZER_DEPS += build/timer.o
 FUZZER_DEPS += build/flags.o
 FUZZER_DEPS += build/fuzz-driver.o
 FUZZER_DEPS += build/murmurhash.o
@@ -124,8 +126,8 @@ build/main.o: src/main.cpp src/argument-parser.hpp src/regexp-executor.hpp src/f
 	g++ -c ${CFLAGS} -o $@ src/main.cpp
 
 
-build/fuzz-driver.o: src/fuzz-driver.cpp src/fuzz-driver.hpp src/regexp-executor.hpp src/fuzz/corpus.hpp src/timer.hpp
-	g++ -c ${CFLAGS} -o $@ src/fuzz-driver.cpp
+build/fuzz-driver.o: src/fuzz-driver.cpp src/fuzz-driver.hpp src/regexp-executor.hpp src/fuzz/corpus.hpp
+	g++ -c ${CFLAGS} ${EXTRA_DEFS} -o $@ src/fuzz-driver.cpp
 
 
 build/argument-parser.o: src/argument-parser.hpp src/argument-parser.cpp src/flags.hpp
@@ -134,7 +136,6 @@ build/argument-parser.o: src/argument-parser.hpp src/argument-parser.cpp src/fla
 
 build/regexp-executor.o: src/regexp-executor.cpp src/regexp-executor.hpp src/fuzz/coverage-tracker.hpp
 	g++ -c ${CFLAGS} -Isrc -o $@ src/regexp-executor.cpp
-
 
 build/coverage-tracker.o: src/fuzz/coverage-tracker.cpp src/fuzz/coverage-tracker.hpp
 	g++ -c ${CFLAGS} -Ideps/murmurhash -o $@ src/fuzz/coverage-tracker.cpp
@@ -147,9 +148,6 @@ build/mutator.o: src/fuzz/mutator.cpp src/fuzz/mutator.hpp
 
 build/flags.o: src/flags.hpp src/flags.cpp
 	g++ -c ${CFLAGS} -o $@ src/flags.cpp
-
-# build/timer.o: src/timer.cpp src/timer.hpp
-# 	g++ -c ${CFLAGS} -o $@ src/timer.cpp
 
 build/murmurhash.o: deps/murmurhash/murmur3.c deps/murmurhash/murmur3.h
 	gcc -c ${CFLAGS} -Ideps/murmurhash -O3 -o $@ deps/murmurhash/murmur3.c

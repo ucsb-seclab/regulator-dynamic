@@ -5,7 +5,6 @@
 #include "fuzz-driver.hpp"
 #include "regexp-executor.hpp"
 #include "flags.hpp"
-#include "timer.hpp"
 
 #include <cstring>
 #include <random>
@@ -28,6 +27,23 @@ static const size_t N_CHILDREN_PER_PARENT = 100;
  * when calling the work_interrupt procedure.
  */
 typedef struct {
+#ifdef REG_PROFILE
+    /**
+     * Amount of time spent executing regexp since last render
+     */
+    std::chrono::steady_clock::duration exec_dur;
+
+    /**
+     * Amount of time spent generating children since last render
+     */
+    std::chrono::steady_clock::duration gen_child_dur;
+
+    /**
+     * Amount of time spent economizing the corpus
+     */
+    std::chrono::steady_clock::duration econo_dur;
+#endif // REG_PROFILE
+
     /**
      * When the fuzzing campaign began
      */
@@ -77,8 +93,8 @@ inline void work_interrupt(exec_context &ctx)
         double seconds_elapsed = elapsed.count() / (static_cast<double>(std::nano::den));
 
         auto elapsed_since_last_render = now - ctx.last_screen_render;
-        double seconds_elapsed_since_last_render = elapsed.count() / (static_cast<double>(std::nano::den));
-        double execs_per_second = ctx.executions_since_last_render / seconds_elapsed;
+        double seconds_elapsed_since_last_render = elapsed_since_last_render.count() / (static_cast<double>(std::nano::den));
+        double execs_per_second = ctx.executions_since_last_render / seconds_elapsed_since_last_render;
 
         std::cout << "Elapsed: "
             << std::setprecision(5) << std::setw(4) << seconds_elapsed << " "
@@ -91,6 +107,24 @@ inline void work_interrupt(exec_context &ctx)
         std::cout << "Executions/s: "
             << std::setprecision(5) << std::setw(4) << execs_per_second << " "
             << std::setw(0) << std::endl;
+
+#ifdef REG_PROFILE
+        // Print and reset profiling stats
+        double seconds_exec = ctx.exec_dur.count() / static_cast<double>(std::nano::den);
+        double seconds_gen_child = ctx.gen_child_dur.count() / static_cast<double>(std::nano::den);
+        double seconds_econo = ctx.econo_dur.count() / static_cast<double>(std::nano::den);
+
+        std::cout << std::setprecision(7) << std::setw(0)
+                  << "Exec: " << seconds_exec << " "
+                  << "GenChild: " << seconds_gen_child << " "
+                  << "Econo: " << seconds_econo << " "
+                  << "Other: " << (seconds_elapsed_since_last_render - (seconds_exec + seconds_gen_child + seconds_econo))
+                  << std::endl;
+        
+        ctx.exec_dur = std::chrono::steady_clock::duration::zero();
+        ctx.gen_child_dur = std::chrono::steady_clock::duration::zero();
+        ctx.econo_dur = std::chrono::steady_clock::duration::zero();
+#endif
 
         if (f::FLAG_debug)
         {
@@ -205,13 +239,22 @@ uint64_t Fuzz(
             }
 
             // Create children
+#ifdef REG_PROFILE
+            std::chrono::steady_clock::time_point gen_start = std::chrono::steady_clock::now();
+#endif
             GenChildren(&corpus, i, N_CHILDREN_PER_PARENT, children);
+#ifdef REG_PROFILE
+            context.gen_child_dur += (std::chrono::steady_clock::now() - gen_start);
+#endif
 
             // Evaluate each child
             for (size_t j = 0; j < children.size() && !context.exit_requested; j++)
             {
                 uint8_t *child = children[j];
 
+#ifdef REG_PROFILE
+                std::chrono::steady_clock::time_point exec_start = std::chrono::steady_clock::now();
+#endif
                 result_code = regulator::executor::Exec(
                     regexp,
                     child,
@@ -219,6 +262,10 @@ uint64_t Fuzz(
                     &result,
                     regulator::executor::kOnlyOneByte
                 );
+
+#ifdef REG_PROFILE
+                context.exec_dur += (std::chrono::steady_clock::now() - exec_start);
+#endif
 
                 if (result_code == regulator::executor::kBadStrRepresentation)
                 {
@@ -280,10 +327,14 @@ uint64_t Fuzz(
         }
         new_children.clear();
 
+#ifdef REG_PROFILE
+        std::chrono::steady_clock::time_point econo_start = std::chrono::steady_clock::now();
+#endif
         corpus.Economize();
+#ifdef REG_PROFILE
+        context.econo_dur += (std::chrono::steady_clock::now() - econo_start);
+#endif
     }
-
-    delete[] baseline;
 
     return corpus.MaxOpcount()->coverage_tracker->Total();
 }

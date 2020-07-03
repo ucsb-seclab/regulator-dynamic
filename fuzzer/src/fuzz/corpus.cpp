@@ -112,7 +112,7 @@ Corpus::~Corpus()
     while (this->economized_entries.size() > 0)
     {
         delete this->economized_entries.at(this->economized_entries.size() - 1);
-        this->entries.pop_back();
+        this->economized_entries.pop_back();
     }
 
     delete this->coverage_upper_bound;

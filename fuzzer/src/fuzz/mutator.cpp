@@ -45,7 +45,7 @@ void GenChildren(
         memcpy(newbuf, last_buf, buflen);
 
         // select a mutation to apply
-        switch (random() % 7)
+        switch (random() % 8)
         {
         case 0:
             mutate_random_byte(newbuf, buflen);
@@ -67,6 +67,9 @@ void GenChildren(
             break;
         case 6:
             replace_with_special(newbuf, buflen);
+            break;
+        case 7:
+            rotate_once(newbuf, buflen);
             break;
         default:
             throw "Unreachable";
@@ -149,6 +152,30 @@ void replace_with_special(uint8_t *buf, size_t buflen)
     char c = interesting[random() % (sizeof(interesting))];
     size_t i = static_cast<size_t>(random()) % buflen;
     buf[i] = c;
+}
+
+void rotate_once(uint8_t *buf, size_t buflen)
+{
+    // when = +1, rotates left
+    // when = -1, rotates right
+    int direction = ((static_cast<int>(random()) & 0x1) * 2) - 1;
+
+    // which end of the buffer to start on?
+    // when rotating left,  0
+    // when rotating right, buflen
+    size_t curr = direction == 1 ? 0 : buflen;
+
+    // store the end char (We overwrite it)
+    uint8_t tmp = buf[curr];
+
+    for (size_t i=0; i < buflen - 1; i++)
+    {
+        buf[curr] = buf[curr + direction];
+        curr += direction;
+    }
+
+    // restore the end char (now on the opposite side)
+    buf[curr] = tmp;
 }
 
 }

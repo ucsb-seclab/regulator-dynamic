@@ -66,5 +66,13 @@ void duplicate_subsequence(uint8_t *buf, size_t buflen);
  * Select a random character to replace with a "special" char
  */
 void replace_with_special(uint8_t *buf, size_t buflen);
+
+
+/**
+ * Rotate the string by one character in a randomly
+ * chosen direction (left or right).
+ */
+void rotate_once(uint8_t *buf, size_t buflen);
+
 }
 }
