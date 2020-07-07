@@ -60,12 +60,6 @@ public:
 
 
     /**
-     * Raw population count of the number of non-zero members. This is
-     * roughly correlated with the total coverage.
-     */
-    uint32_t Popcount();
-
-    /**
      * Counts the total number of edges traversed
      */
     uint64_t Total();

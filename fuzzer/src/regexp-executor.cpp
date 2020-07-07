@@ -45,7 +45,6 @@ V8RegExp::V8RegExp()
 
 V8RegExpResult::V8RegExpResult()
 {
-    this->match = v8::internal::Handle<v8::internal::RegExpMatchInfo>::null();
     this->match_success = false;
     this->opcount = 0;
     this->coverage_tracker = nullptr;
@@ -63,6 +62,11 @@ V8RegExpResult::~V8RegExpResult()
 
 v8::Isolate *Initialize()
 {
+    // NOTE: if this is already set to a non-deleted coverage tracker then
+    // this will leak memory. That's probably okay, because we'll only be
+    // calling this more than once from tests.
+    v8::internal::coverage_tracker = nullptr;
+
     if (_initialized)
     {
         return isolate;
@@ -143,11 +147,7 @@ Result Compile(const char *pattern, const char *flags, V8RegExp *out)
     // matching system, compilation is lazy: it will only occur on-demand
     // when a regexp is executed against a string (ie my_pat.test('foobar')).
     // Another interesting issue is that some irregexp compiler optimizations
-    // depend upon the content of that first string. Moreover, the first
-    // string will determine whether latin1 or utf8 compilation is performed.
-
-    // This encodes the snowman emoji as a string, which we use to force utf-8,
-    // compilation otherwise the regexp will compile to latin1
+    // depend upon the content of that first string.
     v8::internal::Handle<v8::internal::String> subject = (
         i_isolate->factory()
                 ->NewStringFromUtf8(
@@ -163,6 +163,10 @@ Result Compile(const char *pattern, const char *flags, V8RegExp *out)
         i_isolate, h_regexp, subject, 0, match_info).ToHandleChecked();
 
     out->regexp = h_regexp;
+
+    // Avoid leaking the memory of the CoverageTracker
+    delete v8::internal::coverage_tracker;
+    v8::internal::coverage_tracker = nullptr;
 
     return Result::kSuccess;
 }
@@ -215,6 +219,7 @@ Result Exec(
     v8::internal::regexp_exec_cost = 0;
     v8::internal::Handle<v8::internal::Object> o2 = v8::internal::RegExp::Exec(
             i_isolate, regexp->regexp, h_subject, 0, match_info).ToHandleChecked();
+
 
     if (i_isolate->has_pending_exception())
     {

@@ -21,16 +21,21 @@ TEST_CASE( "simple unicode subject string" ) {
     REQUIRE_FALSE( regexp.regexp.is_null() );
 
     e::V8RegExpResult exec_result;
-    char subject[] = {
+    const uint8_t subject[] = {
         'f',
         'o',
-        '\xc3', '\x83', // unicode LATIN CAPITAL LETTER A WITH TILDE
+        0xe8, // e with grave accent
         'o',
         'b',
         'a',
         'r',
     };
-    e::Result exec_result_status = e::Exec(&regexp, subject, sizeof(subject), &exec_result);
+    e::Result exec_result_status = e::Exec(
+        &regexp,
+        subject,
+        sizeof(subject),
+        &exec_result
+    );
     
     REQUIRE( exec_result_status == e::kSuccess );
     REQUIRE( exec_result.match_success == true );

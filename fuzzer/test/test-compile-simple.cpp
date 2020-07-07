@@ -12,7 +12,8 @@ TEST_CASE( "Should be able to compile simple case" ) {
 
 
     regulator::executor::V8RegExp regexp;
-    regulator::executor::Result result = regulator::executor::Compile("fooo", "", &regexp);
+    const char subject[] = "fooo";
+    regulator::executor::Result result = regulator::executor::Compile(subject, "", &regexp);
 
     REQUIRE( result == regulator::executor::Result::kSuccess );
     REQUIRE_FALSE( regexp.regexp.is_null() );

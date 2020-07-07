@@ -39,6 +39,8 @@ TEST_CASE( "opcount should grow as a linearly-bounded function for simple case 1
     // to allow for a small margin
 
 
+    e::V8RegExpResult exec_result;
+
     for (size_t i = 1; i < 100; i++)
     {
         // construct the subject string with `i+1` 'o' chars
@@ -48,8 +50,12 @@ TEST_CASE( "opcount should grow as a linearly-bounded function for simple case 1
             subject.append("o");
         }
 
-        e::V8RegExpResult exec_result;
-        e::Result exec_result_status = e::Exec(&regexp, const_cast<char *>(subject.c_str()), 2 + i, &exec_result);
+        e::Result exec_result_status = e::Exec(
+            &regexp,
+            reinterpret_cast<const uint8_t *>(subject.c_str()),
+            2 + i,
+            &exec_result
+        );
 
         uint64_t expected_max = 15 + (3 * i) + 10;
         

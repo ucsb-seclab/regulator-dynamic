@@ -13,7 +13,6 @@ TEST_CASE( "opcount should grow as a quadratically-bounded function for simple c
     v8::Local<v8::Context> ctx = v8::Context::New(isolate);
     ctx->Enter();
 
-
     e::V8RegExp regexp;
     e::Result compile_result_status = e::Compile("^\\d+1\\d+2", "", &regexp);
 
@@ -39,6 +38,7 @@ TEST_CASE( "opcount should grow as a quadratically-bounded function for simple c
     // So, I infer f(x) = 3.5 x ^ 2 + 11.5 x + 6 , but below will use f'(x) = f(x) + 10
     // to allow for a small margin.
 
+    e::V8RegExpResult exec_result;
     for (size_t i = 1; i < 100; i++)
     {
         // construct the subject string with `i+1` 'o' chars
@@ -49,8 +49,12 @@ TEST_CASE( "opcount should grow as a quadratically-bounded function for simple c
         }
         subject.append("3");
 
-        e::V8RegExpResult exec_result;
-        e::Result exec_result_status = e::Exec(&regexp, const_cast<char *>(subject.c_str()), 1 + i, &exec_result);
+        e::Result exec_result_status = e::Exec(
+            &regexp,
+            reinterpret_cast<const uint8_t *>(subject.c_str()),
+            1 + i,
+            &exec_result
+        );
 
         uint64_t opcount_max = ((7 * (i * i)) + (23 * i)) / 2 + 6 + 10;
         

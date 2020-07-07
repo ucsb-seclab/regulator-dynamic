@@ -199,7 +199,7 @@ build/unistr_case.o: mod/unistr_case.cpp mod/unicode/unistr.h
 TEST_FILES:=$(wildcard test/test-*.cpp)
 TEST_OBJECTS:=$(patsubst test/%.cpp, build/test/%.o, $(TEST_FILES))
 
-TEST_DEPS=build/regexp-executor.o build/coverage-tracker.o build/corpus.o
+TEST_DEPS=build/regexp-executor.o build/coverage-tracker.o build/corpus.o build/murmurhash.o
 
 build/tests: ${TEST_OBJECTS} ${V8_DEPS} build/test/main.o ${TEST_DEPS}
 	g++ -g -o $@ -Itest ${CFLAGS} ${TEST_DEPS} -Wl,--start-group ${V8_DEPS} -Wl,--end-group ${TEST_OBJECTS} build/test/main.o

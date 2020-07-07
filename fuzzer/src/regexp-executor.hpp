@@ -46,7 +46,6 @@ public:
 
     bool match_success;
     uint64_t opcount;
-    v8::internal::MaybeHandle<v8::internal::RegExpMatchInfo> match;
     regulator::fuzz::CoverageTracker *coverage_tracker;
 };
 
