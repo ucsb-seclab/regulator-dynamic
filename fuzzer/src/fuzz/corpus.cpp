@@ -28,7 +28,7 @@ CorpusEntry<Char>::CorpusEntry(CorpusEntry<Char> &other)
 {
     this->buflen = other.buflen;
     this->buf = new Char[other.buflen];
-    memcpy(this->buf, other.buf, other.buflen);
+    memcpy(this->buf, other.buf, other.buflen * sizeof(Char));
     this->coverage_tracker = new CoverageTracker(*other.coverage_tracker);
 }
 
@@ -51,10 +51,14 @@ std::string CorpusEntry<Char>::ToString() const
     out << " word=\"";
     for (size_t i = 0; i < this->buflen; i++)
     {
-        unsigned char c = this->buf[i];
-        if (' ' <= c && c <= '~')
+        Char c = this->buf[i];
+        if ('\\' == c)
         {
-            out << c;
+            out << "\\\\";
+        }
+        else if (' ' <= c && c <= '~')
+        {
+            out << static_cast<char>(c);
         }
         else if (c == '\n')
         {
@@ -71,7 +75,8 @@ std::string CorpusEntry<Char>::ToString() const
         else
         {
             out << "\\x";
-            out << std::setw(sizeof(Char) * 2) << std::setfill('0') << std::hex << static_cast<uint16_t>(c);
+            out << std::setw(sizeof(Char) * 2) << std::setfill('0') << std::hex
+                << static_cast<uint32_t>(c);
             out << std::dec << std::setw(0) << std::setfill(' ');
         }
     }

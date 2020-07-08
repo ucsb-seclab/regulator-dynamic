@@ -24,6 +24,7 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
         ("l,length", "The length of the string buffer to fuzz", cxxopts::value<uint32_t>()->default_value("0"))
         ("t,timeout", "Timeout, in number of seconds", cxxopts::value<uint32_t>()->default_value("0"))
         ("s,seed", "Seed for random number generator", cxxopts::value<uint32_t>()->default_value("0"))
+        ("w,widths", "Which byte-widths to fuzz: use either 1, 2, or \"1,2\"", cxxopts::value<std::string>()->default_value(""))
         ("debug", "Enable debug mode", cxxopts::value<bool>()->default_value("False"))
         ("h,help", "Print help", cxxopts::value<bool>()->default_value("False"));
 
@@ -38,6 +39,8 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
     ret.flags = parsed["flags"].as<std::string>();
     ret.target_regex = parsed["regexp"].as<std::string>();
     ret.strlen = parsed["length"].as<uint32_t>();
+    ret.fuzz_one_byte = true;
+    ret.fuzz_two_byte = true;
 
     regulator::flags::FLAG_timeout = parsed["timeout"].as<uint32_t>();
     regulator::flags::FLAG_debug = parsed["debug"].as<bool>();
@@ -63,6 +66,28 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
         std::cerr << "ERROR: length was nonzero or missing" << std::endl;
         std::cerr << std::endl;
         std::cerr << options.help() << std::endl;
+        exit(1);
+    }
+
+    std::string byte_widths = parsed["widths"].as<std::string>();
+    if (byte_widths == "1")
+    {
+        ret.fuzz_one_byte = true;
+        ret.fuzz_two_byte = false;
+    }
+    else if (byte_widths == "2")
+    {
+        ret.fuzz_one_byte = false;
+        ret.fuzz_two_byte = true;
+    }
+    else if (byte_widths == "" || byte_widths == "1,2" || byte_widths == "2,1")
+    {
+        ret.fuzz_one_byte = true;
+        ret.fuzz_two_byte = true;
+    }
+    else
+    {
+        std::cout << "ERROR: unknown widths argument: " << byte_widths << std::endl;
         exit(1);
     }
 

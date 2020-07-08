@@ -120,33 +120,3 @@ TEST_CASE( "opcount should increase as match generally increases" ) {
     REQUIRE( exec_result_status == e::kSuccess );
     REQUIRE( exec_result.opcount > first_match_opcount );
 }
-
-TEST_CASE( "Rejects invalid latin1" )
-{
-    v8::Isolate *isolate = regulator::executor::Initialize();
-    v8::HandleScope scope(isolate);
-    v8::Local<v8::Context> ctx = v8::Context::New(isolate);
-    ctx->Enter();
-
-    e::V8RegExp regexp;
-    e::Result compile_result_status = e::Compile("fo[o]", "", &regexp);
-
-    REQUIRE( compile_result_status == e::kSuccess );
-    REQUIRE_FALSE( regexp.regexp.is_null() );
-
-    uint8_t *invalid_buf = new uint8_t[4];
-    invalid_buf[0] = 0xff; invalid_buf[1] = 'a'; invalid_buf[2] = 'b'; invalid_buf[3] = 'c';
-
-    e::V8RegExpResult exec_result;
-    e::Result exec_result_status = e::Exec<uint8_t>(
-        &regexp,
-        invalid_buf,
-        3,
-        &exec_result
-    );
-
-    REQUIRE_FALSE( exec_result_status == e::kSuccess );
-    REQUIRE( exec_result_status == e::kBadStrRepresentation );
-
-    delete[] invalid_buf;
-}

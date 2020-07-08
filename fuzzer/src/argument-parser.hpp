@@ -33,6 +33,16 @@ public:
     uint32_t strlen;
 
     /**
+     * Whether to fuzz one-byte strings
+     */
+    bool fuzz_one_byte;
+
+    /**
+     * Whether to fuzz two-byte strings
+     */
+    bool fuzz_two_byte;
+
+    /**
      * Parses command-line arguments
      */
     static ParsedArguments Parse(int argc, char **argv);

@@ -62,7 +62,13 @@ int main(int argc, char* argv[])
     }
 
 
-    uint64_t status = regulator::fuzz::Fuzz(isolate, &regexp, args.strlen);
+    uint64_t status = regulator::fuzz::Fuzz(
+        isolate,
+        &regexp,
+        args.strlen,
+        args.fuzz_one_byte,
+        args.fuzz_two_byte
+    );
 
     return ~status;
 }

@@ -112,13 +112,23 @@ inline void work_interrupt(exec_context &ctx)
             << std::setprecision(5) << std::setw(4) << execs_per_second << " "
             << std::setw(0) << std::endl;
 
-        std::cout << "1-byte Corpus Size: " << ctx.corpus_one_byte->Size() << " ";
+        if (ctx.corpus_one_byte != nullptr)
+        {
+            std::cout << "1-byte Corpus Size: " << ctx.corpus_one_byte->Size() << " ";
 
-        std::cout << "Slowest(1-byte): " << ctx.worst_known_case_one_byte->ToString() << std::endl;
+            std::cout << "Slowest(1-byte): " << ctx.worst_known_case_one_byte->ToString() << std::endl;
+        }
 
-        std::cout << "2-byte Corpus Size: " << ctx.corpus_two_byte->Size() << " ";
+        if (ctx.corpus_two_byte != nullptr)
+        {
+            std::cout << "2-byte Corpus Size: " << ctx.corpus_two_byte->Size() << " ";
 
-        std::cout << "Slowest(2-byte): " << ctx.worst_known_case_two_byte->ToString() << std::endl;
+            std::cout << "Slowest(2-byte): " << ctx.worst_known_case_two_byte->ToString() << std::endl;
+        }
+        else
+        {
+            std::cout << "two_b null" << std::endl;
+        }
 
 #ifdef REG_PROFILE
         // Print and reset profiling stats
@@ -143,8 +153,15 @@ inline void work_interrupt(exec_context &ctx)
             std::cout << "DEBUG corpus mem=";
 
             // Print memory footprint in more readable units (kb, mb, etc...)
-            size_t mem_footprint = ctx.corpus_one_byte->MemoryFootprint() +
-                                   ctx.corpus_two_byte->MemoryFootprint();
+            size_t mem_footprint = 0;
+            if (ctx.corpus_one_byte != nullptr)
+            {
+                mem_footprint += ctx.corpus_one_byte->MemoryFootprint();
+            }
+            if (ctx.corpus_two_byte != nullptr)
+            {
+                mem_footprint += ctx.corpus_two_byte->MemoryFootprint();
+            }
 
             if (mem_footprint <= 1024)
             {
@@ -164,12 +181,20 @@ inline void work_interrupt(exec_context &ctx)
             }
 
             // Print the residency of the upper-bound coverage map
-            double residency_1 = ctx.corpus_one_byte->Residency() * 100;
-            double residency_2 = ctx.corpus_two_byte->Residency() * 100;
-            std::cout << "residency(1-byte)=";
-            std::cout << std::setprecision(4) << std::setw(5) << std::setfill(' ') << residency_1;
-            std::cout << "% residency(2-byte)=" << residency_2;
-            std::cout << std::setw(0) << "%" << std::endl;
+            if (ctx.corpus_one_byte != nullptr)
+            {
+                double residency_1 = ctx.corpus_one_byte->Residency() * 100;
+                std::cout << "residency(1-byte)=";
+                std::cout << std::setprecision(4) << std::setw(5) << std::setfill(' ') << residency_1
+                    << "% ";
+            }
+            if (ctx.corpus_two_byte != nullptr)
+            {
+                double residency_2 = ctx.corpus_two_byte->Residency() * 100;
+                std::cout << "residency(2-byte)=" << residency_2;
+                std::cout << "%";
+            }
+            std::cout << std::setw(0) << std::endl;
         }
 
         ctx.last_screen_render = now;
@@ -183,7 +208,7 @@ inline void work_interrupt(exec_context &ctx)
  */
 template<typename Char>
 inline bool seed_corpus(
-    Corpus<Char> *corpus,
+    Corpus<Char> &corpus,
     regulator::executor::V8RegExp *regexp,
     size_t strlen)
 {
@@ -218,7 +243,7 @@ inline bool seed_corpus(
     // this will be deleted later
     result.coverage_tracker = nullptr;
 
-    corpus->Record(entry);
+    corpus.Record(entry);
     return true;
 }
 
@@ -300,6 +325,7 @@ inline void pass_corpus_once(
 
     for (size_t i=0; i < corpus.Size() && !context.exit_requested; i++)
     {
+        work_interrupt(context);
         CorpusEntry<Char> * parent = corpus.Get(i);
 
         // Choose whether to use this entry as a parent
@@ -379,7 +405,9 @@ inline void pass_corpus_once(
 uint64_t Fuzz(
     v8::Isolate *isolate,
     regulator::executor::V8RegExp *regexp,
-    size_t strlen)
+    size_t strlen,
+    bool fuzz_one_byte,
+    bool fuzz_two_byte)
 {
     exec_context context;
 
@@ -388,27 +416,41 @@ uint64_t Fuzz(
     Corpus<uint16_t> corpus_two_byte;
     context.begin = std::chrono::steady_clock::now();
     context.deadline = context.begin + std::chrono::seconds(regulator::flags::FLAG_timeout);
-    context.corpus_one_byte = &corpus_one_byte;
-    context.corpus_two_byte = &corpus_two_byte;
     context.exit_requested = false;
     context.executions_since_last_render = 0;
-
-    // for some reason std::chrono::...::min() causes some overflows that are annoying to handle
     context.last_screen_render = context.begin - std::chrono::hours(10000);
 
-    if (!seed_corpus(&corpus_one_byte, regexp, strlen))
+    if (fuzz_one_byte)
     {
-        return 0;
+        context.corpus_one_byte = &corpus_one_byte;
+        if (!seed_corpus(corpus_one_byte, regexp, strlen))
+        {
+            return 0;
+        }
+        context.worst_known_case_one_byte = new CorpusEntry<uint8_t>(
+            *corpus_one_byte.Get(0));
     }
-    if (!seed_corpus(&corpus_two_byte, regexp, strlen))
+    else
     {
-        return 0;
+        context.corpus_one_byte = nullptr;
     }
 
-    context.worst_known_case_one_byte = new CorpusEntry<uint8_t>(
-        *corpus_one_byte.Get(0));
-    context.worst_known_case_two_byte = new CorpusEntry<uint16_t>(
-        *corpus_two_byte.Get(0));
+    if (fuzz_two_byte)
+    {
+        std::cout << "FUZZING TWO BYTE" << std::endl;
+        context.corpus_two_byte = &corpus_two_byte;
+        if (!seed_corpus(corpus_two_byte, regexp, strlen))
+        {
+            return 0;
+        }
+        context.worst_known_case_two_byte = new CorpusEntry<uint16_t>(
+            *corpus_two_byte.Get(0));
+    }
+    else
+    {
+        context.corpus_two_byte = nullptr;
+    }
+
 
     if (f::FLAG_debug)
     {
@@ -428,21 +470,27 @@ uint64_t Fuzz(
         }
         work_interrupt(context);
 
-        pass_corpus_once<uint8_t>(
-            context,
-            regexp,
-            strlen,
-            corpus_one_byte,
-            context.worst_known_case_one_byte
-        );
+        if (fuzz_one_byte)
+        {
+            pass_corpus_once<uint8_t>(
+                context,
+                regexp,
+                strlen,
+                corpus_one_byte,
+                context.worst_known_case_one_byte
+            );
+        }
 
-        pass_corpus_once<uint16_t>(
-            context,
-            regexp,
-            strlen,
-            corpus_two_byte,
-            context.worst_known_case_two_byte
-        );
+        if (fuzz_two_byte)
+        {
+            pass_corpus_once<uint16_t>(
+                context,
+                regexp,
+                strlen,
+                corpus_two_byte,
+                context.worst_known_case_two_byte
+            );
+        }
     }
 
     return 1;
