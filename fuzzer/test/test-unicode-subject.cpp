@@ -30,7 +30,7 @@ TEST_CASE( "simple unicode subject string" ) {
         'a',
         'r',
     };
-    e::Result exec_result_status = e::Exec(
+    e::Result exec_result_status = e::Exec<uint8_t>(
         &regexp,
         subject,
         sizeof(subject),

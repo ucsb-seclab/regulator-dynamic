@@ -24,7 +24,7 @@ TEST_CASE( "Should show some coverage" ) {
 
     e::V8RegExpResult exec_result;
     std::string subject = "foooooooooooo";
-    e::Result exec_result_status = e::Exec(
+    e::Result exec_result_status = e::Exec<uint8_t>(
         &regexp,
         reinterpret_cast<const uint8_t *>(subject.c_str()),
         13,
@@ -51,7 +51,7 @@ TEST_CASE( "Coverage should increase as regexp match progresses" )
 
     e::V8RegExpResult exec_result1;
     std::string subject1 = "ab      ";
-    e::Result exec_result_status = e::Exec(
+    e::Result exec_result_status = e::Exec<uint8_t>(
         &regexp,
         reinterpret_cast<const uint8_t *>(subject1.c_str()),
         8,
@@ -65,7 +65,7 @@ TEST_CASE( "Coverage should increase as regexp match progresses" )
     
     e::V8RegExpResult exec_result2;
     std::string subject2 = "abdefgh ";
-    exec_result_status = e::Exec(
+    exec_result_status = e::Exec<uint8_t>(
         &regexp,
         reinterpret_cast<const uint8_t *>(subject2.c_str()),
         8,

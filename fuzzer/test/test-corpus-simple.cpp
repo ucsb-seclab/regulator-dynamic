@@ -17,7 +17,7 @@ TEST_CASE( "Initialize and destroy corpus entry" )
 
     uint8_t *tmpbuf = new uint8_t[sizeof(buf)];
     memcpy(tmpbuf, buf, sizeof(buf));
-    CorpusEntry *entry = new CorpusEntry(tmpbuf, buflen, ctrak);
+    CorpusEntry<uint8_t> *entry = new CorpusEntry<uint8_t>(tmpbuf, buflen, ctrak);
 
     REQUIRE( entry->buf != nullptr);
     REQUIRE( entry->buflen == buflen );
@@ -30,7 +30,7 @@ TEST_CASE( "Initialize and destroy corpus entry" )
 
 TEST_CASE( "Construct Corpus" )
 {
-    Corpus *corp = new Corpus();
+    Corpus<uint8_t> *corp = new Corpus<uint8_t>();
 
     REQUIRE( corp->Size() == 0 );
     REQUIRE( corp->GetOne() == nullptr );
@@ -41,7 +41,7 @@ TEST_CASE( "Construct Corpus" )
 
 TEST_CASE( "Add records to corpus" )
 {
-    Corpus *corp = new Corpus();
+    Corpus<uint8_t> *corp = new Corpus<uint8_t>();
 
     uint8_t buf[] = {'a', 'b', 'c', 'd'};
     size_t buflen = sizeof(buf);
@@ -51,7 +51,7 @@ TEST_CASE( "Add records to corpus" )
 
     uint8_t *tmpbuf = new uint8_t[sizeof(buf)];
     memcpy(tmpbuf, buf, sizeof(buf));
-    CorpusEntry *entry = new CorpusEntry(tmpbuf, buflen, ctrak);
+    CorpusEntry<uint8_t> *entry = new CorpusEntry<uint8_t>(tmpbuf, buflen, ctrak);
 
     corp->Record(entry);
 

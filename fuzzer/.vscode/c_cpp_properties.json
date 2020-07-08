@@ -8,7 +8,7 @@
                 "${workspaceFolder}/deps/v8",
                 "${workspaceFolder}/deps/cxxopts"
             ],
-            "defines": ["V8_INTL_SUPPORT"],
+            "defines": ["V8_INTL_SUPPORT", "REG_PROFILE"],
             "compilerPath": "/usr/bin/clang",
             "cStandard": "c11",
             "cppStandard": "c++14",

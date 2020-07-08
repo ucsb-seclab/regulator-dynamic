@@ -12,8 +12,9 @@ namespace regulator
 namespace fuzz
 {
 
-CorpusEntry::CorpusEntry(
-    uint8_t *buf,
+template <typename Char>
+CorpusEntry<Char>::CorpusEntry(
+    Char *buf,
     size_t buflen,
     CoverageTracker *coverage_tracker)
 {
@@ -22,25 +23,31 @@ CorpusEntry::CorpusEntry(
     this->coverage_tracker = coverage_tracker;
 }
 
-CorpusEntry::CorpusEntry(CorpusEntry &other)
+template <typename Char>
+CorpusEntry<Char>::CorpusEntry(CorpusEntry<Char> &other)
 {
     this->buflen = other.buflen;
-    this->buf = new uint8_t[other.buflen];
+    this->buf = new Char[other.buflen];
     memcpy(this->buf, other.buf, other.buflen);
     this->coverage_tracker = new CoverageTracker(*other.coverage_tracker);
 }
 
-CorpusEntry::~CorpusEntry()
+template <typename Char>
+CorpusEntry<Char>::~CorpusEntry()
 {
     delete[] this->buf;
     delete this->coverage_tracker;
 }
 
-std::string CorpusEntry::ToString() const
+template <typename Char>
+std::string CorpusEntry<Char>::ToString() const
 {
     std::ostringstream out;
     out << "<CorpusEntry @0x" << std::hex << (uintptr_t)(this);
-    out << std::dec;
+    out << std::dec << " ";
+
+    out << "width=" << sizeof(Char) << " ";
+
     out << " word=\"";
     for (size_t i = 0; i < this->buflen; i++)
     {
@@ -64,10 +71,9 @@ std::string CorpusEntry::ToString() const
         else
         {
             out << "\\x";
-            out << std::setw(2) << std::setfill('0') << std::hex << static_cast<uint16_t>(c);
-            out << std::dec << std::setw(0);
+            out << std::setw(sizeof(Char) * 2) << std::setfill('0') << std::hex << static_cast<uint16_t>(c);
+            out << std::dec << std::setw(0) << std::setfill(' ');
         }
-        
     }
     out << std::dec;
     out << "\" Total=" << this->coverage_tracker->Total();
@@ -90,18 +96,22 @@ std::string CorpusEntry::ToString() const
 }
 
 
-size_t CorpusEntry::MemoryFootprint() const
+template<typename Char>
+size_t CorpusEntry<Char>::MemoryFootprint() const
 {
-    return sizeof(CorpusEntry) + sizeof(*buf) * this->buflen + this->coverage_tracker->MemoryFootprint();
+    return sizeof(CorpusEntry) + sizeof(Char) * this->buflen + this->coverage_tracker->MemoryFootprint();
 }
 
 
-Corpus::Corpus()
+template<typename Char>
+Corpus<Char>::Corpus()
 {
     this->coverage_upper_bound = new CoverageTracker();
 }
 
-Corpus::~Corpus()
+
+template<typename Char>
+Corpus<Char>::~Corpus()
 {
     while (this->entries.size() > 0)
     {
@@ -118,12 +128,16 @@ Corpus::~Corpus()
     delete this->coverage_upper_bound;
 }
 
-void Corpus::Record(CorpusEntry *entry)
+
+template<typename Char>
+void Corpus<Char>::Record(CorpusEntry<Char> *entry)
 {
     this->Add(entry);
 }
 
-void Corpus::Add(CorpusEntry *entry)
+
+template<typename Char>
+void Corpus<Char>::Add(CorpusEntry<Char> *entry)
 {
     this->entries.push_back(entry);
 
@@ -151,7 +165,9 @@ void Corpus::Add(CorpusEntry *entry)
     ;
 }
 
-bool Corpus::IsRedundant(CoverageTracker *coverage_tracker) const
+
+template<typename Char>
+bool Corpus<Char>::IsRedundant(CoverageTracker *coverage_tracker) const
 {
     path_hash_t path_hash = coverage_tracker->PathHash();
     size_t hashtable_slot = static_cast<size_t>(path_hash & (CORPUS_PATH_HASHTABLE_SIZE - 1));
@@ -167,7 +183,9 @@ bool Corpus::IsRedundant(CoverageTracker *coverage_tracker) const
     return false;
 }
 
-CorpusEntry *Corpus::GetOne()
+
+template<typename Char>
+CorpusEntry<Char> *Corpus<Char>::GetOne()
 {
     if (this->Size() < 1)
     {
@@ -177,7 +195,9 @@ CorpusEntry *Corpus::GetOne()
     return this->Get(random() % this->Size());
 }
 
-CorpusEntry *Corpus::Get(size_t i)
+
+template<typename Char>
+CorpusEntry<Char> *Corpus<Char>::Get(size_t i)
 {
     if (i >= this->Size())
     {
@@ -192,14 +212,15 @@ CorpusEntry *Corpus::Get(size_t i)
     return this->economized_entries[i - this->entries.size()];
 }
 
-CorpusEntry *Corpus::MaxOpcount()
+template<typename Char>
+CorpusEntry<Char> *Corpus<Char>::MaxOpcount()
 {
     if (this->Size() < 1)
     {
         return nullptr;
     }
 
-    CorpusEntry *most = this->Get(0);
+    CorpusEntry<Char> *most = this->Get(0);
     for (size_t i=1; i<this->Size(); i++)
     {
         if (most->coverage_tracker->Total() < this->Get(i)->coverage_tracker->Total())
@@ -210,7 +231,8 @@ CorpusEntry *Corpus::MaxOpcount()
     return most;
 }
 
-bool Corpus::MaximizesUpperBound(CoverageTracker *coverage_tracker)
+template<typename Char>
+bool Corpus<Char>::MaximizesUpperBound(CoverageTracker *coverage_tracker)
 {
     if (coverage_tracker == nullptr)
     {
@@ -220,12 +242,16 @@ bool Corpus::MaximizesUpperBound(CoverageTracker *coverage_tracker)
     return this->coverage_upper_bound->MaximizesEdge(coverage_tracker);
 }
 
-bool Corpus::HasNewPath(CoverageTracker *coverage_tracker)
+
+template<typename Char>
+bool Corpus<Char>::HasNewPath(CoverageTracker *coverage_tracker)
 {
     return this->coverage_upper_bound->HasNewPath(coverage_tracker);
 }
 
-void Corpus::Economize()
+
+template<typename Char>
+void Corpus<Char>::Economize()
 {
     // NOTE we make the assumption no CorpusEntry in `entries` has a hash
     // equal to a CorpusEntry in `economized_entries`
@@ -242,7 +268,7 @@ void Corpus::Economize()
 
     for (size_t i=0; i<this->entries.size(); i++)
     {
-        CorpusEntry *entry = this->entries[i];
+        CorpusEntry<Char> *entry = this->entries[i];
 
         path_hash_t h = entry->GetCoverageTracker()->PathHash();
 
@@ -281,7 +307,9 @@ void Corpus::Economize()
     delete[] tmp_hashtable;
 }
 
-size_t Corpus::MemoryFootprint() const
+
+template<typename Char>
+size_t Corpus<Char>::MemoryFootprint() const
 {
     size_t ret = 0;
     ret += sizeof(Corpus);
@@ -306,21 +334,25 @@ size_t Corpus::MemoryFootprint() const
 }
 
 
-double Corpus::Residency() const
+template<typename Char>
+double Corpus<Char>::Residency() const
 {
     return this->coverage_upper_bound->Residency();
 }
 
 
-size_t Corpus::Size() const
+template<typename Char>
+size_t Corpus<Char>::Size() const
 {
     return this->entries.size() + this->economized_entries.size();
 }
 
-void Corpus::EvictOne()
-{
-    throw "NotImplemented";
-}
+
+// Specialization
+template class CorpusEntry<uint8_t>;
+template class CorpusEntry<uint16_t>;
+template class Corpus<uint8_t>;
+template class Corpus<uint16_t>;
 
 }
 }

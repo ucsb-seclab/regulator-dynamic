@@ -49,7 +49,7 @@ TEST_CASE( "opcount should grow as a quadratically-bounded function for simple c
         }
         subject.append("3");
 
-        e::Result exec_result_status = e::Exec(
+        e::Result exec_result_status = e::Exec<uint8_t>(
             &regexp,
             reinterpret_cast<const uint8_t *>(subject.c_str()),
             1 + i,

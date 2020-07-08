@@ -31,6 +31,7 @@ const size_t CORPUS_PATH_HASHTABLE_SIZE = 4096;
  * Also contains some meta-information about past
  * executions against this string.
  */
+template <typename Char>
 class CorpusEntry
 {
 public:
@@ -38,8 +39,8 @@ public:
      * Construct a CorpusEntry
      * Takes ownership of the params.
      */
-    CorpusEntry(uint8_t *buf, size_t buflen, CoverageTracker *coverage_tracker);
-    CorpusEntry(CorpusEntry &other);
+    CorpusEntry(Char *buf, size_t buflen, CoverageTracker *coverage_tracker);
+    CorpusEntry(CorpusEntry<Char> &other);
 
     ~CorpusEntry();
 
@@ -56,8 +57,8 @@ public:
 
     std::string ToString() const;
 
-    uint8_t *buf;
-    uint32_t buflen;
+    Char *buf;
+    size_t buflen;
     regulator::fuzz::CoverageTracker *coverage_tracker;
 };
 
@@ -65,6 +66,7 @@ public:
 /**
  * Contains the entire corpus of fuzz inputs and their known effects
  */
+template <typename Char>
 class Corpus
 {
 public:
@@ -75,14 +77,14 @@ public:
      * Store the results of a run into the corpus.
      * Ownership of the `entry` object is transferred to the Corpus.
      */
-    void Record(CorpusEntry *entry);
+    void Record(CorpusEntry<Char> *entry);
 
     /**
      * Get one CorpusEntry arbitrarily.
      * 
      * NOTE: DO NOT MODIFY RETURN VALUE
      */
-    CorpusEntry *GetOne();
+    CorpusEntry<Char> *GetOne();
 
 
     /**
@@ -92,12 +94,12 @@ public:
      * 
      * NOTE: DO NOT MODIFY RETURN VALUE
      */
-    CorpusEntry *Get(size_t i);
+    CorpusEntry<Char> *Get(size_t i);
 
     /**
      * Gets the maximum opcount entry known in this corpus
      */
-    CorpusEntry *MaxOpcount();
+    CorpusEntry<Char> *MaxOpcount();
 
     /**
      * Returns True if this tracker object has any cfg edges which
@@ -142,27 +144,21 @@ public:
      */
     size_t Size() const;
 
-    static const size_t MaxEntries;
 private:
-    /**
-     * Remove one CorpusEntry, used to make room for another.
-     */
-    void EvictOne();
-
     /**
      * Adds one CorpusEntry to the heap. Performs no bounds checks
      * on heap size.
      */
-    void Add(CorpusEntry *entry);
+    void Add(CorpusEntry<Char> *entry);
 
     CoverageTracker *coverage_upper_bound;
 
-    std::vector<CorpusEntry*> entries;
+    std::vector<CorpusEntry<Char> *> entries;
 
     /**
      * Records all entries which have been economized
      */
-    std::vector<CorpusEntry*> economized_entries;
+    std::vector<CorpusEntry<Char> *> economized_entries;
 
     std::vector<path_hash_t> hashtable[CORPUS_PATH_HASHTABLE_SIZE];
 };

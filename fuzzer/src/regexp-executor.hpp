@@ -26,11 +26,17 @@ enum Result {
     kBadStrRepresentation,
 };
 
+enum RepresentationUsed {
+    kRepOneByte,
+    kRepTwoByte,
+};
+
 enum EnforceRepresentation {
     kAnyRepresentation,
     kOnlyOneByte,
-    kOnlyTwoByte
+    kOnlyTwoByte,
 };
+
 
 class V8RegExp {
 public:
@@ -46,6 +52,7 @@ public:
 
     bool match_success;
     uint64_t opcount;
+    RepresentationUsed rep_used;
     regulator::fuzz::CoverageTracker *coverage_tracker;
 };
 
@@ -64,9 +71,10 @@ v8::Isolate *Initialize();
 Result Compile(const char *pattern, const char *flags, V8RegExp *out);
 
 
+template<typename Char>
 Result Exec(
     V8RegExp *regexp,
-    const uint8_t *subject,
+    const Char *subject,
     size_t subject_len,
     V8RegExpResult *out,
     EnforceRepresentation rep = kAnyRepresentation);

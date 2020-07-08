@@ -15,7 +15,11 @@ static const char *MY_ZONE_NAME = "MY_ZONE";
 
 
 int main(int argc, char* argv[])
-{
+{    /**
+     * Remove one CorpusEntry, used to make room for another.
+     */
+    void EvictOne();
+
     // Read and store our arguments.
     regulator::ParsedArguments args = regulator::ParsedArguments::Parse(argc, argv);
 
@@ -33,7 +37,11 @@ int main(int argc, char* argv[])
     if (f::FLAG_debug)
     {
         std::cout << "DEBUG Compiling for regexp: " << args.target_regex << std::endl;
-    }
+    }    /**
+     * Remove one CorpusEntry, used to make room for another.
+     */
+    void EvictOne();
+
 
     // Compile the regexp
     regulator::executor::V8RegExp regexp;
@@ -53,10 +61,8 @@ int main(int argc, char* argv[])
         std::cout << "DEBUG Compiled, beginning fuzz" << std::endl;
     }
 
-    uint8_t *out = new uint8_t[args.strlen];
-    uint64_t opcount = regulator::fuzz::Fuzz(isolate, &regexp, out, args.strlen);
 
-    std::cout << "found opcount: " << opcount << std::endl;
+    uint64_t status = regulator::fuzz::Fuzz(isolate, &regexp, args.strlen);
 
-    delete[] out;
+    return ~status;
 }

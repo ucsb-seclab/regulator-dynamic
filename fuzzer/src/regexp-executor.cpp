@@ -171,9 +171,34 @@ Result Compile(const char *pattern, const char *flags, V8RegExp *out)
     return Result::kSuccess;
 }
 
+
+/**
+ * Helpers to deal with the constructing a string w/ either 1 or 2-byte (see also overload below)
+ */
+inline v8::internal::MaybeHandle<v8::internal::String>
+    construct_string(const uint8_t *subject, size_t subject_len, v8::internal::Isolate *i_isolate)
+{
+    return i_isolate->factory()
+            ->NewStringFromOneByte(
+                v8::internal::VectorOf<const uint8_t>(subject, subject_len)
+            );
+}
+
+
+inline v8::internal::MaybeHandle<v8::internal::String>
+    construct_string(const uint16_t *subject, size_t subject_len, v8::internal::Isolate *i_isolate)
+{
+    return i_isolate->factory()
+            ->NewStringFromTwoByte(
+                v8::internal::VectorOf<const uint16_t>(subject, subject_len)
+            );
+}
+
+
+template<typename Char>
 Result Exec(
     V8RegExp *regexp,
-    const uint8_t *subject,
+    const Char *subject,
     size_t subject_len,
     V8RegExpResult *out,
     EnforceRepresentation rep)
@@ -190,10 +215,11 @@ Result Exec(
         std::cerr << "Pending exception???" << std::endl;
     }
 
-    v8::internal::MaybeHandle<v8::internal::String> maybe_h_subject = i_isolate->factory()
-        ->NewStringFromOneByte(
-            v8::internal::VectorOf<const uint8_t>(subject, subject_len)
-        );
+    v8::internal::MaybeHandle<v8::internal::String> maybe_h_subject = construct_string(
+        subject,
+        subject_len,
+        i_isolate
+    );
 
     v8::internal::Handle<v8::internal::String> h_subject;
     if (!maybe_h_subject.ToHandle(&h_subject))
@@ -211,6 +237,12 @@ Result Exec(
         {
             return Result::kBadStrRepresentation;
         }
+    }
+
+    out->rep_used = kRepOneByte;
+    if (h_subject->IsTwoByteRepresentation())
+    {
+        out->rep_used = kRepTwoByte;
     }
 
     int capture_count = regexp->regexp->CaptureCount();
@@ -243,6 +275,22 @@ Result Exec(
 
     return Result::kSuccess;
 }
+
+template
+Result Exec<uint8_t>(
+    V8RegExp *regexp,
+    const uint8_t *subject,
+    size_t subject_len,
+    V8RegExpResult *out,
+    EnforceRepresentation rep);
+
+template
+Result Exec<uint16_t>(
+    V8RegExp *regexp,
+    const uint16_t *subject,
+    size_t subject_len,
+    V8RegExpResult *out,
+    EnforceRepresentation rep);
 
 }
 }

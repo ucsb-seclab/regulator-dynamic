@@ -14,7 +14,6 @@ TEST_CASE( "Should be able to match, simple case" ) {
     v8::Local<v8::Context> ctx = v8::Context::New(isolate);
     ctx->Enter();
 
-
     e::V8RegExp regexp;
     e::Result compile_result_status = e::Compile("fo[o]", "", &regexp);
 
@@ -23,7 +22,7 @@ TEST_CASE( "Should be able to match, simple case" ) {
 
     e::V8RegExpResult exec_result;
     std::string subject = "foo";
-    e::Result exec_result_status = e::Exec(
+    e::Result exec_result_status = e::Exec<uint8_t>(
         &regexp,
         reinterpret_cast<const uint8_t *>(subject.c_str()),
         3,
@@ -48,7 +47,7 @@ TEST_CASE( "Should be able to no-match, simple case" ) {
 
     e::V8RegExpResult exec_result;
     std::string subject = "bar";
-    e::Result exec_result_status = e::Exec(
+    e::Result exec_result_status = e::Exec<uint8_t>(
         &regexp,
         reinterpret_cast<const uint8_t *>(subject.c_str()),
         3,
@@ -73,7 +72,7 @@ TEST_CASE( "Should have non-zero opcount" ) {
 
     e::V8RegExpResult exec_result;
     std::string subject = "bar";
-    e::Result exec_result_status = e::Exec(
+    e::Result exec_result_status = e::Exec<uint8_t>(
         &regexp,
         reinterpret_cast<const uint8_t *>(subject.c_str()),
         3,
@@ -100,7 +99,7 @@ TEST_CASE( "opcount should increase as match generally increases" ) {
 
     e::V8RegExpResult exec_result;
     std::string subject = "foo";
-    e::Result exec_result_status = e::Exec(
+    e::Result exec_result_status = e::Exec<uint8_t>(
         &regexp,
         reinterpret_cast<const uint8_t *>(subject.c_str()),
         3,
@@ -111,7 +110,7 @@ TEST_CASE( "opcount should increase as match generally increases" ) {
 
     uint64_t first_match_opcount = exec_result.opcount;
     std::string subject2 = "foooo";
-    exec_result_status = e::Exec(
+    exec_result_status = e::Exec<uint8_t>(
         &regexp,
         reinterpret_cast<const uint8_t *>(subject2.c_str()),
         5,
@@ -120,4 +119,34 @@ TEST_CASE( "opcount should increase as match generally increases" ) {
 
     REQUIRE( exec_result_status == e::kSuccess );
     REQUIRE( exec_result.opcount > first_match_opcount );
+}
+
+TEST_CASE( "Rejects invalid latin1" )
+{
+    v8::Isolate *isolate = regulator::executor::Initialize();
+    v8::HandleScope scope(isolate);
+    v8::Local<v8::Context> ctx = v8::Context::New(isolate);
+    ctx->Enter();
+
+    e::V8RegExp regexp;
+    e::Result compile_result_status = e::Compile("fo[o]", "", &regexp);
+
+    REQUIRE( compile_result_status == e::kSuccess );
+    REQUIRE_FALSE( regexp.regexp.is_null() );
+
+    uint8_t *invalid_buf = new uint8_t[4];
+    invalid_buf[0] = 0xff; invalid_buf[1] = 'a'; invalid_buf[2] = 'b'; invalid_buf[3] = 'c';
+
+    e::V8RegExpResult exec_result;
+    e::Result exec_result_status = e::Exec<uint8_t>(
+        &regexp,
+        invalid_buf,
+        3,
+        &exec_result
+    );
+
+    REQUIRE_FALSE( exec_result_status == e::kSuccess );
+    REQUIRE( exec_result_status == e::kBadStrRepresentation );
+
+    delete[] invalid_buf;
 }

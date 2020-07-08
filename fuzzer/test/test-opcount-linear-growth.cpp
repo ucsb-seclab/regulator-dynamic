@@ -50,7 +50,7 @@ TEST_CASE( "opcount should grow as a linearly-bounded function for simple case 1
             subject.append("o");
         }
 
-        e::Result exec_result_status = e::Exec(
+        e::Result exec_result_status = e::Exec<uint8_t>(
             &regexp,
             reinterpret_cast<const uint8_t *>(subject.c_str()),
             2 + i,
