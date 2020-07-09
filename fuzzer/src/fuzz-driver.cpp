@@ -70,14 +70,6 @@ typedef struct {
      */
     Corpus<uint16_t> *corpus_two_byte;
     /**
-     * The input which triggers the longest-known execution path
-     */
-    CorpusEntry<uint8_t> *worst_known_case_one_byte;
-    /**
-     * The input which triggers the longest-known execution path
-     */
-    CorpusEntry<uint16_t> *worst_known_case_two_byte;
-    /**
      * When true the fuzzing loop should exit as soon as possible
      */
     bool exit_requested;
@@ -116,18 +108,14 @@ inline void work_interrupt(exec_context &ctx)
         {
             std::cout << "1-byte Corpus Size: " << ctx.corpus_one_byte->Size() << " ";
 
-            std::cout << "Slowest(1-byte): " << ctx.worst_known_case_one_byte->ToString() << std::endl;
+            std::cout << "Slowest(1-byte): " << ctx.corpus_one_byte->MaxOpcount()->ToString() << std::endl;
         }
 
         if (ctx.corpus_two_byte != nullptr)
         {
             std::cout << "2-byte Corpus Size: " << ctx.corpus_two_byte->Size() << " ";
 
-            std::cout << "Slowest(2-byte): " << ctx.worst_known_case_two_byte->ToString() << std::endl;
-        }
-        else
-        {
-            std::cout << "two_b null" << std::endl;
+            std::cout << "Slowest(2-byte): " << ctx.corpus_two_byte->MaxOpcount()->ToString() << std::endl;
         }
 
 #ifdef REG_PROFILE
@@ -254,14 +242,13 @@ inline bool seed_corpus(
  * is returned, and the known-worst entry is updated.
  */
 template<typename Char>
-inline bool evaluate_child(
+inline void evaluate_child(
     exec_context &context,
     Char *child,
     size_t &strlen,
     regulator::executor::V8RegExp *regexp,
     Corpus<Char> &corpus,
-    CorpusEntry<Char> *parent,
-    CorpusEntry<Char> *&out)
+    CorpusEntry<Char> *parent)
 {
     regulator::executor::V8RegExpResult result;
 
@@ -292,20 +279,24 @@ inline bool evaluate_child(
                 !corpus.IsRedundant(result.coverage_tracker)
             )
         {
-            out = new CorpusEntry<Char>(
-                child,
-                strlen,
-                new CoverageTracker(*result.coverage_tracker)
+            corpus.Record(
+                new CorpusEntry<Char>(
+                    child,
+                    strlen,
+                    new CoverageTracker(*result.coverage_tracker)
+                )
             );
 
+            // avoids double free, but we should probably make the V8ExecResult
+            // not call delete on the coverage tracker to avoid having to do this...
             result.coverage_tracker = nullptr;
-            return true;
+            return;
         }
     }
 
     delete[] child;
     result.coverage_tracker = nullptr;
-    return false;
+    return;
 }
 
 
@@ -317,16 +308,16 @@ inline void pass_corpus_once(
     exec_context &context,
     regulator::executor::V8RegExp *regexp,
     size_t &strlen,
-    Corpus<Char> &corpus,
-    CorpusEntry<Char> *&worst_known)
+    Corpus<Char> &corpus)
 {
-    std::vector<CorpusEntry<Char> *> new_children;
+    // TODO this can be made an array if we're only generating a
+    // fixed-length number of children
     std::vector<Char *> children_to_eval;
 
     for (size_t i=0; i < corpus.Size() && !context.exit_requested; i++)
     {
         work_interrupt(context);
-        CorpusEntry<Char> * parent = corpus.Get(i);
+        CorpusEntry<Char> *parent = corpus.Get(i);
 
         // Choose whether to use this entry as a parent
 
@@ -357,45 +348,22 @@ inline void pass_corpus_once(
         for (size_t j = 0; j < children_to_eval.size() && !context.exit_requested; j++)
         {
             Char *child = children_to_eval[j];
-            CorpusEntry<Char> *entry = nullptr;
-            if (evaluate_child<Char>(
-                    context,
-                    child,
-                    strlen,
-                    regexp,
-                    corpus,
-                    parent,
-                    entry))
-            {
-                new_children.push_back(entry);
-
-                if (entry->GetCoverageTracker()->Total() >
-                        worst_known->GetCoverageTracker()->Total())
-                {
-                    // this is the new known-worst-case, remove old one
-                    delete worst_known;
-                    Char *newbuf = new Char[strlen];
-                    memcpy(newbuf, child, strlen * sizeof(Char));
-                    worst_known = new CorpusEntry<Char>(
-                        newbuf,
-                        strlen,
-                        new CoverageTracker(*entry->GetCoverageTracker())
-                    );
-                }
-            }
+            evaluate_child<Char>(
+                context,
+                child,
+                strlen,
+                regexp,
+                corpus,
+                parent
+            );
         }
-    }
-
-    // record new children into corpus
-    for (size_t j=0; j<new_children.size(); j++)
-    {
-        corpus.Record(new_children[j]);
     }
 
 #ifdef REG_PROFILE
     std::chrono::steady_clock::time_point econo_start = std::chrono::steady_clock::now();
 #endif
-    corpus.Economize();
+    // record new children into corpus
+    corpus.FlushGeneration();
 #ifdef REG_PROFILE
     context.econo_dur += (std::chrono::steady_clock::now() - econo_start);
 #endif
@@ -427,8 +395,6 @@ uint64_t Fuzz(
         {
             return 0;
         }
-        context.worst_known_case_one_byte = new CorpusEntry<uint8_t>(
-            *corpus_one_byte.Get(0));
     }
     else
     {
@@ -437,14 +403,11 @@ uint64_t Fuzz(
 
     if (fuzz_two_byte)
     {
-        std::cout << "FUZZING TWO BYTE" << std::endl;
         context.corpus_two_byte = &corpus_two_byte;
         if (!seed_corpus(corpus_two_byte, regexp, strlen))
         {
             return 0;
         }
-        context.worst_known_case_two_byte = new CorpusEntry<uint16_t>(
-            *corpus_two_byte.Get(0));
     }
     else
     {
@@ -476,8 +439,7 @@ uint64_t Fuzz(
                 context,
                 regexp,
                 strlen,
-                corpus_one_byte,
-                context.worst_known_case_one_byte
+                corpus_one_byte
             );
         }
 
@@ -487,8 +449,7 @@ uint64_t Fuzz(
                 context,
                 regexp,
                 strlen,
-                corpus_two_byte,
-                context.worst_known_case_two_byte
+                corpus_two_byte
             );
         }
     }

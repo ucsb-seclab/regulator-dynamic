@@ -76,6 +76,9 @@ public:
     /**
      * Store the results of a run into the corpus.
      * Ownership of the `entry` object is transferred to the Corpus.
+     * 
+     * NOTE: This will not increase the corpus Size() until
+     *       FlushGeneration() is called.
      */
     void Record(CorpusEntry<Char> *entry);
 
@@ -102,22 +105,23 @@ public:
     CorpusEntry<Char> *MaxOpcount();
 
     /**
-     * Returns True if this tracker object has any cfg edges which
+     * Returns true if this tracker object has any cfg edges which
      * maximize the current known upper bound
      */
     bool MaximizesUpperBound(CoverageTracker *coverage_tracker);
 
-
     /**
-     * Returns True if this tracker object exceeds the known upper bound
+     * Returns True if this tracker object exceeds the known upper bound.
+     * 
+     * NOTE: non-flushed entries do not impact the path upper bound
      */
     bool HasNewPath(CoverageTracker *coverage_tracker);
 
     /**
-     * Removes corpus members which are probably redundant
+     * Mark the current generation sweep as complete. Flushes the pending,
+     * non-redundant entries.
      */
-    void Economize();
-
+    void FlushGeneration();
 
     /**
      * Returns true if we likely already have an entry
@@ -140,7 +144,7 @@ public:
     double Residency() const;
 
     /**
-     * The number of entries in the corpus
+     * The number of flushed entries in the corpus
      */
     size_t Size() const;
 
@@ -153,12 +157,22 @@ private:
 
     CoverageTracker *coverage_upper_bound;
 
-    std::vector<CorpusEntry<Char> *> entries;
+    /**
+     * The entry with the highest-known Total()
+     */
+    CorpusEntry<Char> *maximizing_entry;
+
+    /**
+     * Entries which are recorded for a current generation
+     * but not yet flushed because the generation has not
+     * completed
+     */
+    std::vector<CorpusEntry<Char> *> new_entries;
 
     /**
      * Records all entries which have been economized
      */
-    std::vector<CorpusEntry<Char> *> economized_entries;
+    std::vector<CorpusEntry<Char> *> flushed_entries;
 
     std::vector<path_hash_t> hashtable[CORPUS_PATH_HASHTABLE_SIZE];
 };

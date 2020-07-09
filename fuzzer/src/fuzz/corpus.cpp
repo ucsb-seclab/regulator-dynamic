@@ -112,22 +112,23 @@ template<typename Char>
 Corpus<Char>::Corpus()
 {
     this->coverage_upper_bound = new CoverageTracker();
+    this->maximizing_entry = nullptr;
 }
 
 
 template<typename Char>
 Corpus<Char>::~Corpus()
 {
-    while (this->entries.size() > 0)
+    while (this->new_entries.size() > 0)
     {
-        delete this->entries.at(this->entries.size() - 1);
-        this->entries.pop_back();
+        delete this->new_entries.at(this->new_entries.size() - 1);
+        this->new_entries.pop_back();
     }
 
-    while (this->economized_entries.size() > 0)
+    while (this->flushed_entries.size() > 0)
     {
-        delete this->economized_entries.at(this->economized_entries.size() - 1);
-        this->economized_entries.pop_back();
+        delete this->flushed_entries.at(this->flushed_entries.size() - 1);
+        this->flushed_entries.pop_back();
     }
 
     delete this->coverage_upper_bound;
@@ -137,14 +138,22 @@ Corpus<Char>::~Corpus()
 template<typename Char>
 void Corpus<Char>::Record(CorpusEntry<Char> *entry)
 {
-    this->Add(entry);
+    this->new_entries.push_back(entry);
+
+    if (this->maximizing_entry == nullptr ||
+        this->maximizing_entry->GetCoverageTracker()->Total() < entry->GetCoverageTracker()->Total())
+    {
+        // this is the new maximizing entry
+        delete this->maximizing_entry;
+        this->maximizing_entry = new CorpusEntry<Char>(*entry);
+    }
 }
 
 
 template<typename Char>
 void Corpus<Char>::Add(CorpusEntry<Char> *entry)
 {
-    this->entries.push_back(entry);
+    this->flushed_entries.push_back(entry);
 
     this->coverage_upper_bound->Union(entry->coverage_tracker);
 
@@ -204,36 +213,18 @@ CorpusEntry<Char> *Corpus<Char>::GetOne()
 template<typename Char>
 CorpusEntry<Char> *Corpus<Char>::Get(size_t i)
 {
-    if (i >= this->Size())
+    if (i >= this->flushed_entries.size())
     {
         return nullptr;
     }
 
-    if (i <= this->entries.size())
-    {
-        return this->entries[i];
-    }
-
-    return this->economized_entries[i - this->entries.size()];
+    return this->flushed_entries[i];
 }
 
 template<typename Char>
 CorpusEntry<Char> *Corpus<Char>::MaxOpcount()
 {
-    if (this->Size() < 1)
-    {
-        return nullptr;
-    }
-
-    CorpusEntry<Char> *most = this->Get(0);
-    for (size_t i=1; i<this->Size(); i++)
-    {
-        if (most->coverage_tracker->Total() < this->Get(i)->coverage_tracker->Total())
-        {
-            most = this->Get(i);
-        }
-    }
-    return most;
+    return this->maximizing_entry;
 }
 
 template<typename Char>
@@ -256,60 +247,23 @@ bool Corpus<Char>::HasNewPath(CoverageTracker *coverage_tracker)
 
 
 template<typename Char>
-void Corpus<Char>::Economize()
+void Corpus<Char>::FlushGeneration()
 {
-    // NOTE we make the assumption no CorpusEntry in `entries` has a hash
-    // equal to a CorpusEntry in `economized_entries`
-
-    // Create new hashtable for this procedure
-    std::vector<path_hash_t> *tmp_hashtable = new std::vector<path_hash_t>[CORPUS_PATH_HASHTABLE_SIZE];
-
-    // set everything as not-redundant
-    bool *redundants = new bool[this->entries.size()];
-    for (size_t i=0; i < this->entries.size(); i++)
+    for (size_t i=0; i<this->new_entries.size(); i++)
     {
-        redundants[i] = false;
-    }
+        CorpusEntry<Char> *entry = this->new_entries[i];
 
-    for (size_t i=0; i<this->entries.size(); i++)
-    {
-        CorpusEntry<Char> *entry = this->entries[i];
-
-        path_hash_t h = entry->GetCoverageTracker()->PathHash();
-
-        auto slot = &(tmp_hashtable[h & (CORPUS_PATH_HASHTABLE_SIZE - 1)]);
-
-        for (size_t j=0; j<slot->size(); j++)
+        if (!this->IsRedundant(entry->GetCoverageTracker()))
         {
-            if (slot->at(j) == h)
-            {
-                redundants[i] = true;
-                goto known_redundant;
-            }
-        }
-
-        slot->push_back(h);
-
-        known_redundant:
-        ;
-    }
-
-    for (size_t i=0; i<this->entries.size(); i++)
-    {
-        if (!redundants[i])
-        {
-            this->economized_entries.push_back(this->entries[i]);
+            this->Add(entry);
         }
         else
         {
-            delete this->entries[i];
+            delete entry;
         }
     }
 
-    this->entries.clear();
-
-    delete[] redundants;
-    delete[] tmp_hashtable;
+    this->new_entries.clear();
 }
 
 
@@ -320,19 +274,19 @@ size_t Corpus<Char>::MemoryFootprint() const
     ret += sizeof(Corpus);
     ret += this->coverage_upper_bound->MemoryFootprint();
 
-    for (size_t i=0; i<this->entries.size(); i++)
+    for (size_t i=0; i<this->new_entries.size(); i++)
     {
-        ret += this->entries[i]->MemoryFootprint();
+        ret += this->new_entries[i]->MemoryFootprint();
     }
 
-    for (size_t i=0; i<this->economized_entries.size(); i++)
+    for (size_t i=0; i<this->flushed_entries.size(); i++)
     {
-        ret += this->economized_entries[i]->MemoryFootprint();
+        ret += this->flushed_entries[i]->MemoryFootprint();
     }
 
     for (size_t i=0; i<CORPUS_PATH_HASHTABLE_SIZE; i++)
     {
-        ret += this->hashtable[i].size() * sizeof(path_hash_t);
+        ret += this->hashtable[i].size() * sizeof(this->hashtable[i]) + sizeof(this->hashtable[i][0]);
     }
 
     return ret;
@@ -349,7 +303,7 @@ double Corpus<Char>::Residency() const
 template<typename Char>
 size_t Corpus<Char>::Size() const
 {
-    return this->entries.size() + this->economized_entries.size();
+    return this->flushed_entries.size();
 }
 
 
