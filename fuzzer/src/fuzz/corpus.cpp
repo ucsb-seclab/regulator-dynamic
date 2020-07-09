@@ -132,6 +132,7 @@ Corpus<Char>::~Corpus()
     }
 
     delete this->coverage_upper_bound;
+    delete this->maximizing_entry;
 }
 
 

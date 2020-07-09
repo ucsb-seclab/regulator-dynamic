@@ -23,10 +23,22 @@ static const size_t N_CHILDREN_PER_PARENT = 100;
 
 
 /**
- * Contains context about the active fuzzing campaign, used for convenience
- * when calling the work_interrupt procedure.
+ * Represents the in-progress information about a fuzzing campaign.
  */
-typedef struct {
+template<typename Char>
+class FuzzCampaign
+{
+public:
+    FuzzCampaign()
+        : corpus(new Corpus<Char>()),
+          executions_since_last_render(0),
+          num_generations(0),
+          generation_progress(0)
+        {};
+    ~FuzzCampaign()
+    {
+        delete this->corpus;
+    }
 #ifdef REG_PROFILE
     /**
      * Amount of time spent executing regexp since last render
@@ -45,6 +57,38 @@ typedef struct {
 #endif // REG_PROFILE
 
     /**
+     * The active Corpus for this campaign
+     */
+    Corpus<Char> *corpus;
+
+    /**
+     * The number of regular expression executions which
+     * took place since last screen render
+     */
+    uintmax_t executions_since_last_render;
+
+    /**
+     * The number of generation rounds completed
+     */
+    uintmax_t num_generations;
+
+    /**
+     * The next candidate index in the generation
+     */
+    size_t generation_progress;
+
+    /**
+     * The time at which fuzz work should yield for other work
+     */
+    std::chrono::steady_clock::time_point yield_deadline;
+};
+
+
+/**
+ * Contains context about the entire active fuzzing campaign
+ */
+typedef struct {
+    /**
      * When the fuzzing campaign began
      */
     std::chrono::steady_clock::time_point begin;
@@ -57,20 +101,15 @@ typedef struct {
      */
     std::chrono::steady_clock::time_point last_screen_render;
     /**
-     * The number of regular expression executions which
-     * took place since last screen render
+     * The one-byte campaign details
      */
-    uintmax_t executions_since_last_render;
+    FuzzCampaign<uint8_t> *campaign_one_byte;
     /**
-     * The one-byte corpus in use (helpful for printing size, mem, etc)
+     * The two-byte campaign details
      */
-    Corpus<uint8_t> *corpus_one_byte;
+    FuzzCampaign<uint16_t> *campaign_two_byte;
     /**
-     * The two-byte corpus in use
-     */
-    Corpus<uint16_t> *corpus_two_byte;
-    /**
-     * When true the fuzzing loop should exit as soon as possible
+     * When true, the fuzzing loop should exit as soon as possible
      */
     bool exit_requested;
 } exec_context;
@@ -92,37 +131,78 @@ inline void work_interrupt(exec_context &ctx)
         auto elapsed = now - ctx.begin;
         double seconds_elapsed = elapsed.count() / (static_cast<double>(std::nano::den));
 
-        auto elapsed_since_last_render = now - ctx.last_screen_render;
-        double seconds_elapsed_since_last_render = elapsed_since_last_render.count() / (static_cast<double>(std::nano::den));
-        double execs_per_second = ctx.executions_since_last_render / seconds_elapsed_since_last_render;
-
         std::cout << "Elapsed: "
             << std::setprecision(5) << std::setw(4) << seconds_elapsed << " "
-            << std::setw(0);
-
-        std::cout << "Executions/s: "
-            << std::setprecision(5) << std::setw(4) << execs_per_second << " "
             << std::setw(0) << std::endl;
 
-        if (ctx.corpus_one_byte != nullptr)
-        {
-            std::cout << "1-byte Corpus Size: " << ctx.corpus_one_byte->Size() << " ";
+        auto elapsed_since_last_render = now - ctx.last_screen_render;
+        double seconds_elapsed_since_last_render = elapsed_since_last_render.count() / (static_cast<double>(std::nano::den));
 
-            std::cout << "Slowest(1-byte): " << ctx.corpus_one_byte->MaxOpcount()->ToString() << std::endl;
+        if (ctx.campaign_one_byte != nullptr)
+        {
+            FuzzCampaign<uint8_t> *campaign = ctx.campaign_one_byte;
+            double execs_per_second = campaign->executions_since_last_render / seconds_elapsed_since_last_render;
+            std::cout << "1-byte summary: "
+                << "Exec/s: "
+                << std::setprecision(5) << std::setw(4) << execs_per_second << " "
+                << std::setw(0)
+                << "Corpus Size: " << campaign->corpus->Size() << " "
+                << "Slowest(1-byte): " << campaign->corpus->MaxOpcount()->ToString()
+                << std::endl;
+
+            campaign->executions_since_last_render = 0;
         }
 
-        if (ctx.corpus_two_byte != nullptr)
+        if (ctx.campaign_two_byte != nullptr)
         {
-            std::cout << "2-byte Corpus Size: " << ctx.corpus_two_byte->Size() << " ";
+            FuzzCampaign<uint16_t> *campaign = ctx.campaign_two_byte;
+            double execs_per_second = campaign->executions_since_last_render / seconds_elapsed_since_last_render;
+            std::cout << "2-byte summary: "
+                << "Exec/s: "
+                << std::setprecision(5) << std::setw(4) << execs_per_second << " "
+                << std::setw(0)
+                << "Corpus Size: " << campaign->corpus->Size() << " "
+                << "Slowest(2-byte): " << campaign->corpus->MaxOpcount()->ToString()
+                << std::endl;
 
-            std::cout << "Slowest(2-byte): " << ctx.corpus_two_byte->MaxOpcount()->ToString() << std::endl;
+            campaign->executions_since_last_render = 0;
         }
 
 #ifdef REG_PROFILE
-        // Print and reset profiling stats
-        double seconds_exec = ctx.exec_dur.count() / static_cast<double>(std::nano::den);
-        double seconds_gen_child = ctx.gen_child_dur.count() / static_cast<double>(std::nano::den);
-        double seconds_econo = ctx.econo_dur.count() / static_cast<double>(std::nano::den);
+        // Print and reset profiling stats. VERY UGLY.
+        double seconds_exec = 0;
+        double seconds_gen_child = 0;
+        double seconds_econo = 0;
+
+        if (ctx.campaign_one_byte != nullptr)
+        {
+            seconds_exec += ctx.campaign_one_byte->exec_dur.count()
+                / static_cast<double>(std::nano::den);
+            seconds_gen_child += ctx.campaign_one_byte->gen_child_dur.count()
+                / static_cast<double>(std::nano::den);
+            seconds_econo += ctx.campaign_one_byte->econo_dur.count()
+                / static_cast<double>(std::nano::den);
+            
+            ctx.campaign_one_byte->gen_child_dur =
+                ctx.campaign_one_byte->exec_dur =
+                ctx.campaign_one_byte->econo_dur =
+                    std::chrono::steady_clock::duration::zero();
+        }
+
+        if (ctx.campaign_two_byte != nullptr)
+        {
+            seconds_exec += ctx.campaign_two_byte->exec_dur.count()
+                / static_cast<double>(std::nano::den);
+            seconds_gen_child += ctx.campaign_two_byte->gen_child_dur.count()
+                / static_cast<double>(std::nano::den);
+            seconds_econo += ctx.campaign_two_byte->econo_dur.count()
+                / static_cast<double>(std::nano::den);
+            
+            ctx.campaign_two_byte->gen_child_dur =
+                ctx.campaign_two_byte->exec_dur =
+                ctx.campaign_two_byte->econo_dur =
+                    std::chrono::steady_clock::duration::zero();
+        }
 
         std::cout << std::setprecision(7) << std::setw(0)
                   << "Exec: " << seconds_exec << " "
@@ -130,10 +210,6 @@ inline void work_interrupt(exec_context &ctx)
                   << "Econo: " << seconds_econo << " "
                   << "Other: " << (seconds_elapsed_since_last_render - (seconds_exec + seconds_gen_child + seconds_econo))
                   << std::endl;
-
-        ctx.exec_dur = std::chrono::steady_clock::duration::zero();
-        ctx.gen_child_dur = std::chrono::steady_clock::duration::zero();
-        ctx.econo_dur = std::chrono::steady_clock::duration::zero();
 #endif
 
         if (f::FLAG_debug)
@@ -142,13 +218,13 @@ inline void work_interrupt(exec_context &ctx)
 
             // Print memory footprint in more readable units (kb, mb, etc...)
             size_t mem_footprint = 0;
-            if (ctx.corpus_one_byte != nullptr)
+            if (ctx.campaign_one_byte != nullptr)
             {
-                mem_footprint += ctx.corpus_one_byte->MemoryFootprint();
+                mem_footprint += ctx.campaign_one_byte->corpus->MemoryFootprint();
             }
-            if (ctx.corpus_two_byte != nullptr)
+            if (ctx.campaign_two_byte != nullptr)
             {
-                mem_footprint += ctx.corpus_two_byte->MemoryFootprint();
+                mem_footprint += ctx.campaign_two_byte->corpus->MemoryFootprint();
             }
 
             if (mem_footprint <= 1024)
@@ -169,16 +245,16 @@ inline void work_interrupt(exec_context &ctx)
             }
 
             // Print the residency of the upper-bound coverage map
-            if (ctx.corpus_one_byte != nullptr)
+            if (ctx.campaign_one_byte != nullptr)
             {
-                double residency_1 = ctx.corpus_one_byte->Residency() * 100;
+                double residency_1 = ctx.campaign_one_byte->corpus->Residency() * 100;
                 std::cout << "residency(1-byte)=";
                 std::cout << std::setprecision(4) << std::setw(5) << std::setfill(' ') << residency_1
                     << "% ";
             }
-            if (ctx.corpus_two_byte != nullptr)
+            if (ctx.campaign_two_byte != nullptr)
             {
-                double residency_2 = ctx.corpus_two_byte->Residency() * 100;
+                double residency_2 = ctx.campaign_two_byte->corpus->Residency() * 100;
                 std::cout << "residency(2-byte)=" << residency_2;
                 std::cout << "%";
             }
@@ -186,7 +262,6 @@ inline void work_interrupt(exec_context &ctx)
         }
 
         ctx.last_screen_render = now;
-        ctx.executions_since_last_render = 0;
     }
 }
 
@@ -196,7 +271,7 @@ inline void work_interrupt(exec_context &ctx)
  */
 template<typename Char>
 inline bool seed_corpus(
-    Corpus<Char> &corpus,
+    Corpus<Char> *corpus,
     regulator::executor::V8RegExp *regexp,
     size_t strlen)
 {
@@ -231,7 +306,8 @@ inline bool seed_corpus(
     // this will be deleted later
     result.coverage_tracker = nullptr;
 
-    corpus.Record(entry);
+    corpus->Record(entry);
+    corpus->FlushGeneration();
     return true;
 }
 
@@ -247,7 +323,7 @@ inline void evaluate_child(
     Char *child,
     size_t &strlen,
     regulator::executor::V8RegExp *regexp,
-    Corpus<Char> &corpus,
+    FuzzCampaign<Char> *campaign,
     CorpusEntry<Char> *parent)
 {
     regulator::executor::V8RegExpResult result;
@@ -264,22 +340,22 @@ inline void evaluate_child(
     );
 
 #ifdef REG_PROFILE
-    context.exec_dur += (std::chrono::steady_clock::now() - exec_start);
+    campaign->exec_dur += (std::chrono::steady_clock::now() - exec_start);
 #endif
 
     if (result_code == regulator::executor::kSuccess)
     {
         // Execution succeeded, proceed to analyze how 'good' this was
-        context.executions_since_last_render++;
+        campaign->executions_since_last_render++;
 
         // If this child uncovered new behavior, then add it to new_children
         // (later added to corpus, which assumes ownership)
         if (
                 parent->GetCoverageTracker()->HasNewPath(result.coverage_tracker) &&
-                !corpus.IsRedundant(result.coverage_tracker)
+                !campaign->corpus->IsRedundant(result.coverage_tracker)
             )
         {
-            corpus.Record(
+            campaign->corpus->Record(
                 new CorpusEntry<Char>(
                     child,
                     strlen,
@@ -304,26 +380,43 @@ inline void evaluate_child(
  * Pass over the given Corpus exactly once
  */
 template<typename Char>
-inline void pass_corpus_once(
+inline void work_on_corpus(
     exec_context &context,
     regulator::executor::V8RegExp *regexp,
     size_t &strlen,
-    Corpus<Char> &corpus)
+    FuzzCampaign<Char> *campaign)
 {
+
     // TODO this can be made an array if we're only generating a
     // fixed-length number of children
     std::vector<Char *> children_to_eval;
 
-    for (size_t i=0; i < corpus.Size() && !context.exit_requested; i++)
+    for (;std::chrono::steady_clock::now() < campaign->yield_deadline; campaign->generation_progress++)
     {
-        work_interrupt(context);
-        CorpusEntry<Char> *parent = corpus.Get(i);
+        // If we've already fuzzed everything in this corpus, flush and
+        // start again
+        if (campaign->generation_progress >= campaign->corpus->Size())
+        {
+#ifdef REG_PROFILE
+            std::chrono::steady_clock::time_point econo_start = std::chrono::steady_clock::now();
+#endif
+            // record new children into corpus
+            campaign->corpus->FlushGeneration();
+#ifdef REG_PROFILE
+            campaign->econo_dur += (std::chrono::steady_clock::now() - econo_start);
+#endif
+
+            campaign->num_generations++;
+            campaign->generation_progress = 0;
+        }
+
+        CorpusEntry<Char> *parent = campaign->corpus->Get(campaign->generation_progress);
 
         // Choose whether to use this entry as a parent
 
         // alpha = prob(selected) * 1024 - 1
         uint64_t alpha = 9; // approx. 1%
-        if (corpus.MaximizesUpperBound(parent->GetCoverageTracker()))
+        if (campaign->corpus->MaximizesUpperBound(parent->GetCoverageTracker()))
         {
             alpha = 1024 - 1;
         }
@@ -339,13 +432,18 @@ inline void pass_corpus_once(
         std::chrono::steady_clock::time_point gen_start = std::chrono::steady_clock::now();
 #endif
         children_to_eval.clear();
-        GenChildren<Char>(&corpus, i, N_CHILDREN_PER_PARENT, children_to_eval);
+        GenChildren<Char>(
+            campaign->corpus,
+            campaign->generation_progress,
+            N_CHILDREN_PER_PARENT,
+            children_to_eval
+        );
 #ifdef REG_PROFILE
-        context.gen_child_dur += (std::chrono::steady_clock::now() - gen_start);
+        campaign->gen_child_dur += (std::chrono::steady_clock::now() - gen_start);
 #endif
 
         // Evaluate each child
-        for (size_t j = 0; j < children_to_eval.size() && !context.exit_requested; j++)
+        for (size_t j = 0; j < children_to_eval.size(); j++)
         {
             Char *child = children_to_eval[j];
             evaluate_child<Char>(
@@ -353,20 +451,11 @@ inline void pass_corpus_once(
                 child,
                 strlen,
                 regexp,
-                corpus,
+                campaign,
                 parent
             );
         }
     }
-
-#ifdef REG_PROFILE
-    std::chrono::steady_clock::time_point econo_start = std::chrono::steady_clock::now();
-#endif
-    // record new children into corpus
-    corpus.FlushGeneration();
-#ifdef REG_PROFILE
-    context.econo_dur += (std::chrono::steady_clock::now() - econo_start);
-#endif
 }
 
 
@@ -380,38 +469,36 @@ uint64_t Fuzz(
     exec_context context;
 
     // Set up context (used at work-interrupt points)
-    Corpus<uint8_t> corpus_one_byte;
-    Corpus<uint16_t> corpus_two_byte;
     context.begin = std::chrono::steady_clock::now();
     context.deadline = context.begin + std::chrono::seconds(regulator::flags::FLAG_timeout);
     context.exit_requested = false;
-    context.executions_since_last_render = 0;
     context.last_screen_render = context.begin - std::chrono::hours(10000);
 
     if (fuzz_one_byte)
     {
-        context.corpus_one_byte = &corpus_one_byte;
-        if (!seed_corpus(corpus_one_byte, regexp, strlen))
+        context.campaign_one_byte = new FuzzCampaign<uint8_t>();
+
+        if (!seed_corpus(context.campaign_one_byte->corpus, regexp, strlen))
         {
             return 0;
         }
     }
     else
     {
-        context.corpus_one_byte = nullptr;
+        context.campaign_one_byte = nullptr;
     }
 
     if (fuzz_two_byte)
     {
-        context.corpus_two_byte = &corpus_two_byte;
-        if (!seed_corpus(corpus_two_byte, regexp, strlen))
+        context.campaign_two_byte = new FuzzCampaign<uint16_t>();
+        if (!seed_corpus(context.campaign_two_byte->corpus, regexp, strlen))
         {
             return 0;
         }
     }
     else
     {
-        context.corpus_two_byte = nullptr;
+        context.campaign_two_byte = nullptr;
     }
 
 
@@ -420,37 +507,33 @@ uint64_t Fuzz(
         std::cout << "DEBUG Baseline established. Proceeding to main work loop." << std::endl;
     }
 
-    std::vector<CorpusEntry<uint8_t> *> new_children_one_byte;
-    std::vector<CorpusEntry<uint16_t> *> new_children_two_byte;
-    std::vector<uint8_t *> children_buf_one_byte;
-    std::vector<uint16_t *> children_buf_two_byte;
+    // how long we can work on each corpus
+    constexpr auto work_period = std::chrono::milliseconds(100);
 
-    for (size_t num_generations=0; !context.exit_requested; num_generations++)
+    while (!context.exit_requested)
     {
-        if (f::FLAG_debug)
-        {
-            std::cout << "DEBUG evaling generation " << num_generations << std::endl;
-        }
-        work_interrupt(context);
-
         if (fuzz_one_byte)
         {
-            pass_corpus_once<uint8_t>(
+            context.campaign_one_byte->yield_deadline = std::chrono::steady_clock::now() + work_period;
+            work_on_corpus(
                 context,
                 regexp,
                 strlen,
-                corpus_one_byte
+                context.campaign_one_byte
             );
+            work_interrupt(context);
         }
 
         if (fuzz_two_byte)
         {
-            pass_corpus_once<uint16_t>(
+            context.campaign_two_byte->yield_deadline = std::chrono::steady_clock::now() + work_period;
+            work_on_corpus(
                 context,
                 regexp,
                 strlen,
-                corpus_two_byte
+                context.campaign_two_byte
             );
+            work_interrupt(context);
         }
     }
 
