@@ -28,28 +28,28 @@ const char interesting_one_byte[] = {
 };
 
 const uint16_t interesting_two_byte[] = {
-    0x6600, // 'f'
-    0x3100, // '1'
-    0x0d00, // '\r'
-    0x0a00, // '\n'
-    0x0900, // '\t'
-    0x2000, // ' '
-    0x2100, // '!'
-    0xac20, // euro sign
-    0x0326, 0x0ffe, // snowman emoji
-    0x3dd8, 0x93dc, // beating heart emoji
+    0x0066, // 'f'
+    0x0031, // '1'
+    0x000d, // '\r'
+    0x000a, // '\n'
+    0x0009, // '\t'
+    0x0020, // ' '
+    0x0021, // '!'
+    0x20ac, // euro sign
+    0x2603, 0xfe0f, // snowman emoji
+    0xd83d, 0xdc93, // beating heart emoji
 };
 
 template<typename Char>
 void GenChildren(
-    Corpus<Char> *corpus,
-    size_t parent_idx,
+    Char *parent,
+    size_t parent_len,
     size_t n_children,
-    ::std::vector<Char *> &vec)
+    ::std::vector<Char *> &coparent_buffer,
+    ::std::vector<Char> &extra_interesting,
+    ::std::vector<Char *> &out)
 {
     // NOTE: each child is a mutation OF THE PREVIOUS GENERATED CHILD
-
-    CorpusEntry<Char> *parent = corpus->Get(parent_idx);
     Char *last_buf = parent->buf;
     size_t buflen = parent->buflen;
 
@@ -62,25 +62,25 @@ void GenChildren(
         switch (random() % 8)
         {
         case 0:
-            mutate_random_byte(newbuf, buflen);
+            mutate_random_char(newbuf, buflen);
             break;
         case 1:
-            arith_random_byte(newbuf, buflen);
+            arith_random_char(newbuf, buflen);
             break;
         case 2:
-            swap_random_bytes(newbuf, buflen);
+            swap_random_char(newbuf, buflen);
             break;
         case 3:
             bit_flip(newbuf, buflen);
             break;
         case 4:
-            crossover(newbuf, buflen, corpus, parent_idx);
+            crossover(newbuf, buflen, coparent_buffer);
             break;
         case 5:
             duplicate_subsequence(newbuf, buflen);
             break;
         case 6:
-            replace_with_special(newbuf, buflen);
+            replace_with_special(newbuf, buflen, extra_interesting);
             break;
         case 7:
             rotate_once(newbuf, buflen);
@@ -90,12 +90,12 @@ void GenChildren(
         }
 
         last_buf = newbuf;
-        vec.push_back(newbuf);
+        out.push_back(newbuf);
     }
 }
 
 template<typename Char>
-void mutate_random_byte(Char *buf, size_t buflen)
+inline void mutate_random_char(Char *buf, size_t buflen)
 {
     size_t addr = static_cast<size_t>(random()) % buflen;
     buf[addr] = static_cast<Char>(random());
@@ -103,7 +103,7 @@ void mutate_random_byte(Char *buf, size_t buflen)
 
 
 template<typename Char>
-void arith_random_byte(Char *buf, size_t buflen)
+inline void arith_random_char(Char *buf, size_t buflen)
 {
     size_t addr = static_cast<size_t>(random()) % buflen;
     int8_t to_add = static_cast<int8_t>(static_cast<uint8_t>(random())) & 0xf - 8;
@@ -116,7 +116,7 @@ void arith_random_byte(Char *buf, size_t buflen)
 }
 
 template<typename Char>
-void swap_random_bytes(Char *buf, size_t buflen)
+inline void swap_random_char(Char *buf, size_t buflen)
 {
     size_t src = static_cast<size_t>(random()) % buflen;
     size_t dst;
@@ -131,7 +131,7 @@ void swap_random_bytes(Char *buf, size_t buflen)
 }
 
 template<typename Char>
-void bit_flip(Char *buf, size_t buflen)
+inline void bit_flip(Char *buf, size_t buflen)
 {
     size_t addr = static_cast<size_t>(random()) % buflen;
     Char bit = static_cast<uint8_t>(random()) % (sizeof(Char) * 8);
@@ -139,7 +139,7 @@ void bit_flip(Char *buf, size_t buflen)
 }
 
 template<typename Char>
-void crossover(Char *buf, size_t buflen, Corpus<Char> *corpus, size_t avoid_original_parent)
+inline void crossover(Char *buf, size_t buflen, std::vector<Char *> &coparent_buffer)
 {
     if (corpus->Size() == 1)
     {
@@ -160,22 +160,19 @@ void crossover(Char *buf, size_t buflen, Corpus<Char> *corpus, size_t avoid_orig
     // make end exclusive (so end can be `buflen` at most)
     end++;
 
-    size_t coparent_idx;
-    do
-    {
-        coparent_idx = static_cast<size_t>(random()) % (corpus->Size());
-    } while (coparent_idx == avoid_original_parent);
-
-    CorpusEntry<Char> *co_parent = corpus->Get(coparent_idx);
+    Char *co_parent = coparent_buffer[coparent_buffer.size() - 1];
+    coparent_buffer.pop_back();
 
     for (size_t i = src; i < buflen && i < end; i++)
     {
-        buf[i] = co_parent->buf[i];
+        buf[i] = co_parent[i];
     }
+
+    delete co_parent;
 }
 
 template<typename Char>
-void duplicate_subsequence(Char *buf, size_t buflen)
+inline void duplicate_subsequence(Char *buf, size_t buflen)
 {
     size_t src = static_cast<size_t>(random()) % buflen;
     // end is exclusive
@@ -192,16 +189,27 @@ void duplicate_subsequence(Char *buf, size_t buflen)
 
 
 template<typename Char>
-void replace_with_special(Char *buf, size_t buflen)
+inline void replace_with_special(Char *buf, size_t buflen, std::vector<Char> &extra_interesting)
 {
     Char c;
-    if (sizeof(Char) == 1)
+    constexpr Char *interesting_arr =
+        sizeof(Char) == 1
+            ? interesting_one_byte
+            : interesting_two_byte;
+    constexpr size_t num_builtin_interesting =
+        sizeof(Char) == 1
+            ? sizeof(interesting_one_byte) / sizeof(Char)
+            : sizeof(interesting_two_byte) / sizeof(Char);
+
+    size_t chosen_idx = static_cast<size_t>(random()) % (num_builtin_interesting + extra_interesting.size());
+
+    if (chosen_idx >= num_builtin_interesting)
     {
-        c = interesting_one_byte[random() % (sizeof(interesting_one_byte))];
+        c = extra_interesting[chosen_idx - num_builtin_interesting];
     }
     else
     {
-        c = interesting_two_byte[random() % (sizeof(interesting_two_byte) / sizeof(Char))];
+        c = interesting_arr[chosen_idx];
     }
 
     size_t i = static_cast<size_t>(random()) % buflen;
@@ -210,7 +218,7 @@ void replace_with_special(Char *buf, size_t buflen)
 
 
 template<typename Char>
-void rotate_once(Char *buf, size_t buflen)
+inline void rotate_once(Char *buf, size_t buflen)
 {
     // when = +1, rotates left
     // when = -1, rotates right
@@ -235,16 +243,20 @@ void rotate_once(Char *buf, size_t buflen)
 }
 
 template void GenChildren<uint8_t>(
-    Corpus<uint8_t> *corpus,
-    size_t parent_idx,
+    uint8_t *parent,
+    size_t parent_len,
     size_t n_children,
-    ::std::vector<uint8_t *> &vec);
+    ::std::vector<uint8_t *> &coparent_buffer,
+    ::std::vector<uint8_t> &extra_interesting,
+    ::std::vector<uint8_t *> &out);
 
 template void GenChildren<uint16_t>(
-    Corpus<uint16_t> *corpus,
-    size_t parent_idx,
+    uint16_t *parent,
+    size_t parent_len,
     size_t n_children,
-    ::std::vector<uint16_t *> &vec);
+    ::std::vector<uint16_t *> &coparent_buffer,
+    ::std::vector<uint16_t> &extra_interesting,
+    ::std::vector<uint16_t *> &out);
 
 }
 }
