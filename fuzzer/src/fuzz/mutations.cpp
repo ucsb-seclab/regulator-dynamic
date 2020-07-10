@@ -1,4 +1,4 @@
-#include "mutator.hpp"
+#include "mutations.hpp"
 
 #include <cstdint>
 #include <random>
@@ -14,17 +14,17 @@ namespace fuzz
 /**
  * Contains interesting chars to insert
  */
-const char interesting_one_byte[] = {
+const uint8_t interesting_one_byte[] = {
     ' ', '\t', '\n', '\r', '\v',    // whitespaces
     'a', 'z', 'A', 'Z',             // letters
     '1', '2',                       // digits
     '~', '!', '\\', '/', '"', '\'', // special chars
-    '\xe8', /* e with grave accent */
-    '\xbe', /* three quarters mark */
-    '\xb2', /* superscript two */
-    '\x80', /* euro */
-    '\xdc', /* uppercase U with umlaut */
-    '\xd7', /* times symbol */
+    0xe8, /* e with grave accent */
+    0xbe, /* three quarters mark */
+    0xb2, /* superscript two */
+    0x80, /* euro */
+    0xdc, /* uppercase U with umlaut */
+    0xd7, /* times symbol */
 };
 
 const uint16_t interesting_two_byte[] = {
@@ -40,59 +40,6 @@ const uint16_t interesting_two_byte[] = {
     0xd83d, 0xdc93, // beating heart emoji
 };
 
-template<typename Char>
-void GenChildren(
-    Char *parent,
-    size_t parent_len,
-    size_t n_children,
-    ::std::vector<Char *> &coparent_buffer,
-    ::std::vector<Char> &extra_interesting,
-    ::std::vector<Char *> &out)
-{
-    // NOTE: each child is a mutation OF THE PREVIOUS GENERATED CHILD
-    Char *last_buf = parent->buf;
-    size_t buflen = parent->buflen;
-
-    for (size_t i = 0; i < n_children; i++)
-    {
-        Char *newbuf = new Char[buflen];
-        memcpy(newbuf, last_buf, buflen * sizeof(Char));
-
-        // select a mutation to apply
-        switch (random() % 8)
-        {
-        case 0:
-            mutate_random_char(newbuf, buflen);
-            break;
-        case 1:
-            arith_random_char(newbuf, buflen);
-            break;
-        case 2:
-            swap_random_char(newbuf, buflen);
-            break;
-        case 3:
-            bit_flip(newbuf, buflen);
-            break;
-        case 4:
-            crossover(newbuf, buflen, coparent_buffer);
-            break;
-        case 5:
-            duplicate_subsequence(newbuf, buflen);
-            break;
-        case 6:
-            replace_with_special(newbuf, buflen, extra_interesting);
-            break;
-        case 7:
-            rotate_once(newbuf, buflen);
-            break;
-        default:
-            throw "Unreachable";
-        }
-
-        last_buf = newbuf;
-        out.push_back(newbuf);
-    }
-}
 
 template<typename Char>
 inline void mutate_random_char(Char *buf, size_t buflen)
@@ -100,7 +47,6 @@ inline void mutate_random_char(Char *buf, size_t buflen)
     size_t addr = static_cast<size_t>(random()) % buflen;
     buf[addr] = static_cast<Char>(random());
 }
-
 
 template<typename Char>
 inline void arith_random_char(Char *buf, size_t buflen)
@@ -139,67 +85,80 @@ inline void bit_flip(Char *buf, size_t buflen)
 }
 
 template<typename Char>
-inline void crossover(Char *buf, size_t buflen, std::vector<Char *> &coparent_buffer)
+inline void crossover(Char *buf, size_t buflen, Char *&coparent)
 {
-    if (corpus->Size() == 1)
-    {
-        // no co-parents are available
-        return;
-    }
-
     size_t src = static_cast<size_t>(random()) % buflen;
     // end is exclusive
     size_t end = static_cast<size_t>(random()) % buflen;
 
+    // if src & end are out-of-order then swap them into order
     if (src > end)
     {
         size_t tmp = src;
         src = end;
         end = tmp;
     }
+
     // make end exclusive (so end can be `buflen` at most)
     end++;
 
-    Char *co_parent = coparent_buffer[coparent_buffer.size() - 1];
-    coparent_buffer.pop_back();
-
     for (size_t i = src; i < buflen && i < end; i++)
     {
-        buf[i] = co_parent[i];
+        buf[i] = coparent[i];
     }
-
-    delete co_parent;
 }
 
 template<typename Char>
 inline void duplicate_subsequence(Char *buf, size_t buflen)
 {
-    size_t src = static_cast<size_t>(random()) % buflen;
-    // end is exclusive
-    size_t end = src + static_cast<size_t>(random()) % (buflen - src);
+    if (buflen == 1)
+    {
+        // nothing to do
+        return;
+    }
 
-    size_t len = end - src;
-    size_t dst = static_cast<size_t>(random()) % (buflen - len);
+    // to avoid selecting the whole thing, ensure the substring
+    // length is in the inclusive range [1, buflen-1]
+    size_t substr_len = static_cast<size_t>(random()) % (buflen - 1) + 1;
 
-    uint8_t *tmp = new uint8_t[len];
-    memcpy(tmp, buf + src, len);
-    memcpy(buf + dst, tmp, len);
+    // now, select where the substring should start (any index from 0 to
+    // buflen - substr_len)
+    size_t src = static_cast<size_t>(random()) % ((buflen - substr_len) + 1);
+
+    // select a destination index which isn't src
+    size_t dst;
+    do
+    {
+        dst = static_cast<size_t>(random()) % ((buflen - substr_len) + 1);
+    } while (src == dst);
+
+    Char *tmp = new Char[substr_len * sizeof(Char)];
+    memcpy(tmp, buf + src, substr_len * sizeof(Char));
+    memcpy(buf + dst, tmp, substr_len * sizeof(Char));
     delete[] tmp;
 }
 
 
+inline void get_interesting_arr(const uint8_t *&ptr, size_t &len)
+{
+    ptr = interesting_one_byte;
+    len = sizeof(interesting_one_byte);
+}
+
+inline void get_interesting_arr(const uint16_t *&ptr, size_t &len)
+{
+    ptr = interesting_two_byte;
+    len = sizeof(interesting_two_byte) / sizeof(uint16_t);
+}
+
 template<typename Char>
 inline void replace_with_special(Char *buf, size_t buflen, std::vector<Char> &extra_interesting)
 {
+    const Char *interesting_arr;
+    size_t num_builtin_interesting;
+    get_interesting_arr(interesting_arr, num_builtin_interesting);
+
     Char c;
-    constexpr Char *interesting_arr =
-        sizeof(Char) == 1
-            ? interesting_one_byte
-            : interesting_two_byte;
-    constexpr size_t num_builtin_interesting =
-        sizeof(Char) == 1
-            ? sizeof(interesting_one_byte) / sizeof(Char)
-            : sizeof(interesting_two_byte) / sizeof(Char);
 
     size_t chosen_idx = static_cast<size_t>(random()) % (num_builtin_interesting + extra_interesting.size());
 
@@ -242,21 +201,23 @@ inline void rotate_once(Char *buf, size_t buflen)
     buf[curr] = tmp;
 }
 
-template void GenChildren<uint8_t>(
-    uint8_t *parent,
-    size_t parent_len,
-    size_t n_children,
-    ::std::vector<uint8_t *> &coparent_buffer,
-    ::std::vector<uint8_t> &extra_interesting,
-    ::std::vector<uint8_t *> &out);
+template void mutate_random_char(uint8_t *buf, size_t buflen);
+template void arith_random_char(uint8_t *buf, size_t buflen);
+template void swap_random_char(uint8_t *buf, size_t buflen);
+template void bit_flip(uint8_t *buf, size_t buflen);
+template void crossover(uint8_t *buf, size_t buflen, uint8_t *&coparent);
+template void duplicate_subsequence(uint8_t *buf, size_t buflen);
+template void replace_with_special(uint8_t *buf, size_t buflen, std::vector<uint8_t> &extra_interesting);
+template void rotate_once(uint8_t *buf, size_t buflen);
 
-template void GenChildren<uint16_t>(
-    uint16_t *parent,
-    size_t parent_len,
-    size_t n_children,
-    ::std::vector<uint16_t *> &coparent_buffer,
-    ::std::vector<uint16_t> &extra_interesting,
-    ::std::vector<uint16_t *> &out);
+template void mutate_random_char(uint16_t *buf, size_t buflen);
+template void arith_random_char(uint16_t *buf, size_t buflen);
+template void swap_random_char(uint16_t *buf, size_t buflen);
+template void bit_flip(uint16_t *buf, size_t buflen);
+template void crossover(uint16_t *buf, size_t buflen, uint16_t *&coparent);
+template void duplicate_subsequence(uint16_t *buf, size_t buflen);
+template void replace_with_special(uint16_t *buf, size_t buflen, std::vector<uint16_t> &extra_interesting);
+template void rotate_once(uint16_t *buf, size_t buflen);
 
 }
 }

@@ -143,8 +143,8 @@ build/coverage-tracker.o: src/fuzz/coverage-tracker.cpp src/fuzz/coverage-tracke
 build/corpus.o: src/fuzz/corpus.cpp src/fuzz/corpus.hpp src/fuzz/coverage-tracker.hpp
 	g++ -c ${CFLAGS} -o $@ src/fuzz/corpus.cpp
 
-build/mutator.o: src/fuzz/mutator.cpp src/fuzz/mutator.hpp
-	g++ -c ${CFLAGS} -o $@ src/fuzz/mutator.cpp
+build/mutations.o: src/fuzz/mutations.cpp src/fuzz/mutations.hpp
+	g++ -c ${CFLAGS} -o $@ src/fuzz/mutations.cpp
 
 build/flags.o: src/flags.hpp src/flags.cpp
 	g++ -c ${CFLAGS} -o $@ src/flags.cpp
@@ -199,7 +199,7 @@ build/unistr_case.o: mod/unistr_case.cpp mod/unicode/unistr.h
 TEST_FILES:=$(wildcard test/test-*.cpp)
 TEST_OBJECTS:=$(patsubst test/%.cpp, build/test/%.o, $(TEST_FILES))
 
-TEST_DEPS=build/regexp-executor.o build/coverage-tracker.o build/corpus.o build/murmurhash.o build/mutator.o
+TEST_DEPS=build/regexp-executor.o build/coverage-tracker.o build/corpus.o build/murmurhash.o build/mutations.o
 
 build/tests: ${TEST_OBJECTS} ${V8_DEPS} build/test/main.o ${TEST_DEPS}
 	g++ -g -o $@ -Itest ${CFLAGS} ${TEST_DEPS} -Wl,--start-group ${V8_DEPS} -Wl,--end-group ${TEST_OBJECTS} build/test/main.o

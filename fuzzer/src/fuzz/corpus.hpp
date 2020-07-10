@@ -13,6 +13,7 @@
 
 
 #include "coverage-tracker.hpp"
+#include "mutations.hpp"
 
 
 namespace regulator
@@ -83,12 +84,19 @@ public:
     void Record(CorpusEntry<Char> *entry);
 
     /**
-     * Get one CorpusEntry arbitrarily.
-     * 
-     * NOTE: DO NOT MODIFY RETURN VALUE
+     * Store this character as 'interesting'
      */
-    CorpusEntry<Char> *GetOne();
+    void RecordInteresting(Char c);
 
+    /**
+     * Generate children from the given parent byte pattern.
+     */
+    void GenerateChildren(
+        Char *parent,
+        size_t parent_len,
+        size_t n_children,
+        std::vector<Char *> &out
+    );
 
     /**
      * Gets the ith entry.
@@ -149,6 +157,12 @@ public:
     size_t Size() const;
 
 private:
+
+    /**
+     * Get an arbitrary buffer from the corpus to use as a coparent
+     */
+    Char *GetCoparent();
+
     /**
      * Adds one CorpusEntry to the heap. Performs no bounds checks
      * on heap size.
@@ -168,6 +182,16 @@ private:
      * completed
      */
     std::vector<CorpusEntry<Char> *> new_entries;
+
+    /**
+     * A buffer of randomly-selected coparents
+     */
+    std::vector<Char *> coparent_buffer;
+
+    /**
+     * Some supplementary interesting chars to use for mutations
+     */
+    std::vector<Char> extra_interesting;
 
     /**
      * Records all entries which have been economized

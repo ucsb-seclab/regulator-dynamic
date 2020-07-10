@@ -1,4 +1,5 @@
 #include "corpus.hpp"
+#include "mutations.hpp"
 
 #include <cstring>
 #include <vector>
@@ -152,6 +153,13 @@ void Corpus<Char>::Record(CorpusEntry<Char> *entry)
 
 
 template<typename Char>
+void Corpus<Char>::RecordInteresting(Char c)
+{
+    this->extra_interesting.push_back(c);
+}
+
+
+template<typename Char>
 void Corpus<Char>::Add(CorpusEntry<Char> *entry)
 {
     this->flushed_entries.push_back(entry);
@@ -200,15 +208,63 @@ bool Corpus<Char>::IsRedundant(CoverageTracker *coverage_tracker) const
 
 
 template<typename Char>
-CorpusEntry<Char> *Corpus<Char>::GetOne()
+void Corpus<Char>::GenerateChildren(
+    Char *parent,
+    size_t parent_len,
+    size_t n_children,
+    std::vector<Char *> &out
+)
 {
-    if (this->Size() < 1)
+    // NOTE: each child is a mutation OF THE PREVIOUS GENERATED CHILD
+    Char *last_buf = parent;
+    size_t buflen = parent_len;
+
+    std::vector<Char> extra_interesting;
+
+    for (size_t i = 0; i < n_children; i++)
     {
-        return nullptr;
+        Char *newbuf = new Char[buflen];
+        memcpy(newbuf, last_buf, buflen * sizeof(Char));
+        Char *coparent;
+
+        // select a mutation to apply
+        switch (random() % 8)
+        {
+        case 0:
+            mutate_random_char(newbuf, buflen);
+            break;
+        case 1:
+            arith_random_char(newbuf, buflen);
+            break;
+        case 2:
+            swap_random_char(newbuf, buflen);
+            break;
+        case 3:
+            bit_flip(newbuf, buflen);
+            break;
+        case 4:
+            coparent = this->GetCoparent();
+            crossover(newbuf, buflen, coparent);
+            delete[] coparent;
+            break;
+        case 5:
+            duplicate_subsequence(newbuf, buflen);
+            break;
+        case 6:
+            replace_with_special(newbuf, buflen, extra_interesting);
+            break;
+        case 7:
+            rotate_once(newbuf, buflen);
+            break;
+        default:
+            throw "Unreachable";
+        }
+
+        last_buf = newbuf;
+        out.push_back(newbuf);
     }
-    
-    return this->Get(random() % this->Size());
 }
+
 
 
 template<typename Char>
@@ -293,6 +349,17 @@ size_t Corpus<Char>::MemoryFootprint() const
     return ret;
 }
 
+template<typename Char>
+Char *Corpus<Char>::GetCoparent()
+{
+    size_t coparent_idx = static_cast<size_t>(random()) % (this->flushed_entries.size());
+    CorpusEntry<Char> *coparent = this->flushed_entries[coparent_idx];
+
+    Char *buf = new Char[coparent->buflen];
+    memcpy(buf, coparent->buf, coparent->buflen * sizeof(Char));
+
+    return buf;
+}
 
 template<typename Char>
 double Corpus<Char>::Residency() const

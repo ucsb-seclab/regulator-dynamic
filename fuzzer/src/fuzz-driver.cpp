@@ -1,7 +1,6 @@
 #include "src/execution/isolate.h"
 
 #include "fuzz/corpus.hpp"
-#include "fuzz/mutator.hpp"
 #include "fuzz-driver.hpp"
 #include "regexp-executor.hpp"
 #include "flags.hpp"
@@ -432,9 +431,9 @@ inline void work_on_corpus(
         std::chrono::steady_clock::time_point gen_start = std::chrono::steady_clock::now();
 #endif
         children_to_eval.clear();
-        GenChildren<Char>(
-            campaign->corpus,
-            campaign->generation_progress,
+        campaign->corpus->GenerateChildren(
+            parent->buf,
+            parent->buflen,
             N_CHILDREN_PER_PARENT,
             children_to_eval
         );
