@@ -16,15 +16,13 @@ namespace fuzz
  */
 const uint8_t interesting_one_byte[] = {
     ' ', '\t', '\n', '\r', '\v',    // whitespaces
-    'a', 'z', 'A', 'Z',             // letters
-    '1', '2',                       // digits
-    '~', '!', '\\', '/', '"', '\'', // special chars
-    0xe8, /* e with grave accent */
-    0xbe, /* three quarters mark */
-    0xb2, /* superscript two */
-    0x80, /* euro */
-    0xdc, /* uppercase U with umlaut */
-    0xd7, /* times symbol */
+    0xe8, // e with grave accent
+    0xbe, // three quarters mark
+    0xb2, // superscript two
+    0x80, // euro
+    0xdc, // uppercase U with umlaut
+    0xd7, // times symbol
+    0xff, // all bits set
 };
 
 const uint16_t interesting_two_byte[] = {
@@ -38,6 +36,7 @@ const uint16_t interesting_two_byte[] = {
     0x20ac, // euro sign
     0x2603, 0xfe0f, // snowman emoji
     0xd83d, 0xdc93, // beating heart emoji
+    0xffff, // all bits set
 };
 
 

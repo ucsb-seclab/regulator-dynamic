@@ -121,6 +121,7 @@ private:
     cov_t *covmap;
     uint64_t total;
     path_hash_t path_hash;
+    bool _deleted;
 };
 
 }

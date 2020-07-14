@@ -248,7 +248,6 @@ Result Exec(
     int capture_count = regexp->regexp->CaptureCount();
     v8::internal::Handle<v8::internal::RegExpMatchInfo> match_info = i_isolate->factory()->NewRegExpMatchInfo();
 
-    v8::internal::regexp_exec_cost = 0;
     v8::internal::Handle<v8::internal::Object> o2 = v8::internal::RegExp::Exec(
             i_isolate, regexp->regexp, h_subject, 0, match_info).ToHandleChecked();
 
@@ -258,8 +257,6 @@ Result Exec(
         std::cerr << "Pending exception!!!" << std::endl;
     }
 
-    // out->match = match_info;
-    out->opcount = v8::internal::regexp_exec_cost;
     out->match_success = !(o2->IsNull());
     out->coverage_tracker = v8::internal::coverage_tracker;
 

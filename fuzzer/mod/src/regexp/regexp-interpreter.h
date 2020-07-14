@@ -14,6 +14,8 @@
 #include "src/regexp/regexp.h"
 #include "fuzz/coverage-tracker.hpp"
 
+#include <vector>
+
 namespace v8 {
 namespace internal {
 
@@ -21,7 +23,6 @@ namespace internal {
 // ------- mod_mcl_2020 -------
 
 // Cost of all instructions executed in the most recent regexp run
-extern uint64_t regexp_exec_cost;
 extern ::regulator::fuzz::CoverageTracker *coverage_tracker;
 
 // ------- <end> mod_mcl_2020 -------

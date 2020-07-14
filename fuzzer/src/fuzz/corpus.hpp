@@ -84,11 +84,6 @@ public:
     void Record(CorpusEntry<Char> *entry);
 
     /**
-     * Store this character as 'interesting'
-     */
-    void RecordInteresting(Char c);
-
-    /**
      * Generate children from the given parent byte pattern.
      */
     void GenerateChildren(
@@ -144,6 +139,13 @@ public:
     size_t MemoryFootprint() const;
 
     /**
+     * Set the "interesting characters" to use during mutation.
+     * 
+     * Takes ownership of the vector.
+     */
+    void SetInteresting(std::vector<Char> *interesting);
+
+    /**
      * Gets the percentage of slots which are non-zero in the
      * upper-bound coverage map.
      * 
@@ -191,7 +193,7 @@ private:
     /**
      * Some supplementary interesting chars to use for mutations
      */
-    std::vector<Char> extra_interesting;
+    std::vector<Char> *extra_interesting;
 
     /**
      * Records all entries which have been economized

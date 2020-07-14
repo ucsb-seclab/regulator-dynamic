@@ -3,6 +3,7 @@
 #include "fuzz/corpus.hpp"
 #include "fuzz-driver.hpp"
 #include "regexp-executor.hpp"
+#include "interesting-char-finder.hpp"
 #include "flags.hpp"
 
 #include <cstring>
@@ -481,6 +482,13 @@ uint64_t Fuzz(
         {
             return 0;
         }
+
+        std::vector<uint8_t> *interesting = new std::vector<uint8_t>();
+        if (!fuzz::ExtractInteresting(*regexp, *interesting))
+        {
+            return 0;
+        }
+        context.campaign_one_byte->corpus->SetInteresting(interesting);
     }
     else
     {
@@ -490,10 +498,18 @@ uint64_t Fuzz(
     if (fuzz_two_byte)
     {
         context.campaign_two_byte = new FuzzCampaign<uint16_t>();
+        
         if (!seed_corpus(context.campaign_two_byte->corpus, regexp, strlen))
         {
             return 0;
         }
+
+        std::vector<uint16_t> *interesting = new std::vector<uint16_t>();
+        if (!fuzz::ExtractInteresting(*regexp, *interesting))
+        {
+            return 0;
+        }
+        context.campaign_two_byte->corpus->SetInteresting(interesting);
     }
     else
     {

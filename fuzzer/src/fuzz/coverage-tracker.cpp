@@ -25,6 +25,7 @@ CoverageTracker::CoverageTracker()
     this->total = 0;
     this->covmap = new cov_t[num_slots_to_alloc];
     this->Clear();
+    this->_deleted = false;
 }
 
 CoverageTracker::CoverageTracker(const CoverageTracker &other)
@@ -33,11 +34,17 @@ CoverageTracker::CoverageTracker(const CoverageTracker &other)
     this->covmap = new cov_t[num_slots_to_alloc];
     memcpy(this->covmap, other.covmap, num_slots_to_alloc * sizeof(cov_t));
     this->path_hash = other.path_hash;
+    this->_deleted = false;
 }
 
 
 CoverageTracker::~CoverageTracker()
 {
+    if (this->_deleted)
+    {
+        std::cout << "DOUBLE FREE CoverageTracker" << std::endl;
+    }
+    this->_deleted = true;
     delete[] this->covmap;
 }
 

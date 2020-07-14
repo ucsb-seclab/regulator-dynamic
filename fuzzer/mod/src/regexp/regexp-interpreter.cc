@@ -310,7 +310,6 @@ bool CheckBitInTable(const uint32_t current_char, const byte* const table) {
 // ------- mod_mcl_2020 -------
 #define SET_PC_FROM_OFFSET(offset)  \
   next_pc = code_base + offset;     \
-  v8::internal::regexp_exec_cost++; \
   v8::internal::coverage_tracker->Cover(reinterpret_cast<uintptr_t>(pc), reinterpret_cast<uintptr_t>(next_pc)); \
   DECODE()
 // ------- mod_mcl_2020 -------

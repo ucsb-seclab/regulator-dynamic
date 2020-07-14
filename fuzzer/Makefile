@@ -115,6 +115,7 @@ FUZZER_DEPS += build/regexp-executor.o
 FUZZER_DEPS += build/flags.o
 FUZZER_DEPS += build/fuzz-driver.o
 FUZZER_DEPS += build/murmurhash.o
+FUZZER_DEPS += build/interesting-char-finder.o
 
 build/fuzzer: node ${FUZZER_DEPS} ${V8_DEPS} build/libv8_base_without_compiler.a
 	mkdir -p build
@@ -148,6 +149,9 @@ build/mutations.o: src/fuzz/mutations.cpp src/fuzz/mutations.hpp
 
 build/flags.o: src/flags.hpp src/flags.cpp
 	g++ -c ${CFLAGS} -o $@ src/flags.cpp
+
+build/interesting-char-finder.o: src/interesting-char-finder.cpp src/interesting-char-finder.hpp src/regexp-executor.hpp
+	g++ -c ${CFLAGS} -o $@ src/interesting-char-finder.cpp
 
 build/murmurhash.o: deps/murmurhash/murmur3.c deps/murmurhash/murmur3.h
 	gcc -c ${CFLAGS} -Ideps/murmurhash -O3 -o $@ deps/murmurhash/murmur3.c
@@ -199,7 +203,13 @@ build/unistr_case.o: mod/unistr_case.cpp mod/unicode/unistr.h
 TEST_FILES:=$(wildcard test/test-*.cpp)
 TEST_OBJECTS:=$(patsubst test/%.cpp, build/test/%.o, $(TEST_FILES))
 
-TEST_DEPS=build/regexp-executor.o build/coverage-tracker.o build/corpus.o build/murmurhash.o build/mutations.o
+TEST_DEPS=build/regexp-executor.o
+TEST_DEPS += build/coverage-tracker.o
+TEST_DEPS += build/corpus.o
+TEST_DEPS += build/murmurhash.o
+TEST_DEPS += build/mutations.o
+TEST_DEPS += build/interesting-char-finder.o
+TEST_DEPS += build/flags.o
 
 build/tests: ${TEST_OBJECTS} ${V8_DEPS} build/test/main.o ${TEST_DEPS}
 	g++ -g -o $@ -Itest ${CFLAGS} ${TEST_DEPS} -Wl,--start-group ${V8_DEPS} -Wl,--end-group ${TEST_OBJECTS} build/test/main.o

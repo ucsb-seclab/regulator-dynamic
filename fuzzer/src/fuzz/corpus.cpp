@@ -24,6 +24,7 @@ CorpusEntry<Char>::CorpusEntry(
     this->coverage_tracker = coverage_tracker;
 }
 
+
 template <typename Char>
 CorpusEntry<Char>::CorpusEntry(CorpusEntry<Char> &other)
 {
@@ -33,12 +34,14 @@ CorpusEntry<Char>::CorpusEntry(CorpusEntry<Char> &other)
     this->coverage_tracker = new CoverageTracker(*other.coverage_tracker);
 }
 
+
 template <typename Char>
 CorpusEntry<Char>::~CorpusEntry()
 {
     delete[] this->buf;
     delete this->coverage_tracker;
 }
+
 
 template <typename Char>
 std::string CorpusEntry<Char>::ToString() const
@@ -114,6 +117,7 @@ Corpus<Char>::Corpus()
 {
     this->coverage_upper_bound = new CoverageTracker();
     this->maximizing_entry = nullptr;
+    this->extra_interesting = new std::vector<Char>();
 }
 
 
@@ -134,6 +138,7 @@ Corpus<Char>::~Corpus()
 
     delete this->coverage_upper_bound;
     delete this->maximizing_entry;
+    delete this->extra_interesting;
 }
 
 
@@ -149,13 +154,6 @@ void Corpus<Char>::Record(CorpusEntry<Char> *entry)
         delete this->maximizing_entry;
         this->maximizing_entry = new CorpusEntry<Char>(*entry);
     }
-}
-
-
-template<typename Char>
-void Corpus<Char>::RecordInteresting(Char c)
-{
-    this->extra_interesting.push_back(c);
 }
 
 
@@ -266,7 +264,6 @@ void Corpus<Char>::GenerateChildren(
 }
 
 
-
 template<typename Char>
 CorpusEntry<Char> *Corpus<Char>::Get(size_t i)
 {
@@ -278,11 +275,13 @@ CorpusEntry<Char> *Corpus<Char>::Get(size_t i)
     return this->flushed_entries[i];
 }
 
+
 template<typename Char>
 CorpusEntry<Char> *Corpus<Char>::MaxOpcount()
 {
     return this->maximizing_entry;
 }
+
 
 template<typename Char>
 bool Corpus<Char>::MaximizesUpperBound(CoverageTracker *coverage_tracker)
@@ -347,6 +346,13 @@ size_t Corpus<Char>::MemoryFootprint() const
     }
 
     return ret;
+}
+
+template<typename Char>
+inline void Corpus<Char>::SetInteresting(std::vector<Char> *interesting)
+{
+    delete this->extra_interesting;
+    this->extra_interesting = interesting;
 }
 
 template<typename Char>
