@@ -94,7 +94,6 @@ bool ExtractInteresting(
         case v8::internal::BC_CHECK_NOT_CHAR:
             {
                 uint32_t c = instruction >> v8::internal::BYTECODE_SHIFT;
-                std::cout << "hmm " << std::dec << c << std::endl;
                 if (sizeof(Char) == 1)
                 {
                     c &= 0xff;
@@ -217,11 +216,6 @@ bool ExtractInteresting(
         case v8::internal::BC_MINUS_AND_CHECK_NOT_CHAR:
         default:
             break;
-        }
-
-        if ((bitmap['?' / 8] & (1 << ('?' % 8))) != 0)
-        {
-            std::cout << "hmm xxxxxxxx" << std::endl;
         }
 
         pc += v8::internal::RegExpBytecodeLength(instruction & v8::internal::BYTECODE_MASK);

@@ -46,7 +46,6 @@ V8RegExp::V8RegExp()
 V8RegExpResult::V8RegExpResult()
 {
     this->match_success = false;
-    this->opcount = 0;
     this->coverage_tracker = nullptr;
 }
 

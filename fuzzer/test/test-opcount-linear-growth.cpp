@@ -59,6 +59,6 @@ TEST_CASE( "opcount should grow as a linearly-bounded function for simple case 1
 
         uint64_t expected_max = 15 + (3 * i) + 10;
         
-        REQUIRE( exec_result.opcount < expected_max );
+        REQUIRE( exec_result.coverage_tracker->Total() < expected_max );
     }
 }

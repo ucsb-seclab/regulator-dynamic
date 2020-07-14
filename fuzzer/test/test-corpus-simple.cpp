@@ -33,7 +33,7 @@ TEST_CASE( "Construct Corpus" )
     Corpus<uint8_t> *corp = new Corpus<uint8_t>();
 
     REQUIRE( corp->Size() == 0 );
-    REQUIRE( corp->GetOne() == nullptr );
+    REQUIRE( corp->Get(0) == nullptr );
 
     delete corp;
 }
@@ -54,10 +54,11 @@ TEST_CASE( "Add records to corpus" )
     CorpusEntry<uint8_t> *entry = new CorpusEntry<uint8_t>(tmpbuf, buflen, ctrak);
 
     corp->Record(entry);
+    corp->FlushGeneration();
 
     REQUIRE( corp->Size() == 1 );
-    REQUIRE( corp->GetOne() != nullptr );
-    REQUIRE( corp->GetOne() == entry );
+    REQUIRE( corp->Get(0) != nullptr );
+    REQUIRE( corp->Get(0) == entry );
 
     delete corp;
 }

@@ -58,6 +58,6 @@ TEST_CASE( "opcount should grow as a quadratically-bounded function for simple c
 
         uint64_t opcount_max = ((7 * (i * i)) + (23 * i)) / 2 + 6 + 10;
         
-        REQUIRE( exec_result.opcount < (opcount_max + 10) );
+        REQUIRE( exec_result.coverage_tracker->Total() < (opcount_max + 10) );
     }
 }

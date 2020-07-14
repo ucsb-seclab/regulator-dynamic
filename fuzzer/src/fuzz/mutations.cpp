@@ -33,7 +33,7 @@ const uint16_t interesting_two_byte[] = {
     0x0009, // '\t'
     0x0020, // ' '
     0x0021, // '!'
-    0x20ac, // euro sign
+    0x01d4, // small letter u with caron
     0x2603, 0xfe0f, // snowman emoji
     0xd83d, 0xdc93, // beating heart emoji
     0xffff, // all bits set

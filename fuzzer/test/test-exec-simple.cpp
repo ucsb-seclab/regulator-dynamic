@@ -58,30 +58,6 @@ TEST_CASE( "Should be able to no-match, simple case" ) {
     REQUIRE( exec_result.match_success == false );
 }
 
-TEST_CASE( "Should have non-zero opcount" ) {
-    v8::Isolate *isolate = regulator::executor::Initialize();
-    v8::HandleScope scope(isolate);
-    v8::Local<v8::Context> ctx = v8::Context::New(isolate);
-    ctx->Enter();
-
-    e::V8RegExp regexp;
-    e::Result compile_result_status = e::Compile("fo[o]", "", &regexp);
-
-    REQUIRE( compile_result_status == e::kSuccess );
-    REQUIRE_FALSE( regexp.regexp.is_null() );
-
-    e::V8RegExpResult exec_result;
-    std::string subject = "bar";
-    e::Result exec_result_status = e::Exec<uint8_t>(
-        &regexp,
-        reinterpret_cast<const uint8_t *>(subject.c_str()),
-        3,
-        &exec_result
-    );
-
-    REQUIRE( exec_result.opcount > 0 );
-}
-
 TEST_CASE( "opcount should increase as match generally increases" ) {
     v8::Isolate *isolate = regulator::executor::Initialize();
     v8::HandleScope scope(isolate);
@@ -97,26 +73,28 @@ TEST_CASE( "opcount should increase as match generally increases" ) {
     REQUIRE( v8::internal::coverage_tracker == nullptr );
     REQUIRE_FALSE( regexp.regexp.is_null() );
 
-    e::V8RegExpResult exec_result;
+    e::V8RegExpResult exec_result1;
     std::string subject = "foo";
     e::Result exec_result_status = e::Exec<uint8_t>(
         &regexp,
         reinterpret_cast<const uint8_t *>(subject.c_str()),
         3,
-        &exec_result
+        &exec_result1
     );
+    size_t ops_1 = exec_result1.coverage_tracker->Total();
+    exec_result1.coverage_tracker = nullptr;
 
     REQUIRE( exec_result_status == e::kSuccess );
 
-    uint64_t first_match_opcount = exec_result.opcount;
-    std::string subject2 = "foooo";
+    std::string subject2 = "fooooooooooo";
+    e::V8RegExpResult exec_result2;
     exec_result_status = e::Exec<uint8_t>(
         &regexp,
         reinterpret_cast<const uint8_t *>(subject2.c_str()),
-        5,
-        &exec_result
+        subject2.size(),
+        &exec_result2
     );
 
     REQUIRE( exec_result_status == e::kSuccess );
-    REQUIRE( exec_result.opcount > first_match_opcount );
+    REQUIRE( exec_result2.coverage_tracker->Total() > ops_1 );
 }

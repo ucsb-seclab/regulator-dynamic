@@ -51,7 +51,6 @@ public:
     ~V8RegExpResult();
 
     bool match_success;
-    uint64_t opcount;
     RepresentationUsed rep_used;
     regulator::fuzz::CoverageTracker *coverage_tracker;
 };

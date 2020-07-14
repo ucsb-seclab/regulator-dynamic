@@ -138,7 +138,7 @@ TEST_CASE( "test a vulnerable regex for special chars" )
     ctx->Enter();
 
     e::V8RegExp regexp;
-    std::string pattern = "\\d+1\\d+2(b|bb)+c";
+    std::string pattern = "\\d+1\\d+2(a|aa)+c";
     std::string flags = "";
     e::Result result = e::Compile(pattern.c_str(), flags.c_str(), &regexp);
 
@@ -157,7 +157,6 @@ TEST_CASE( "test a vulnerable regex for special chars" )
     for (size_t i=0; i<interesting.size(); i++)
     {
         has_a = has_a || interesting[i] == 'a';
-        std::cout << interesting[i] << std::endl;
     }
 
     REQUIRE( has_a );
