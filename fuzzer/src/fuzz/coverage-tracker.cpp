@@ -17,6 +17,7 @@ namespace fuzz
 {
 
 // NOTE: I believe this allocs one too many slots
+// KEEP A MULTIPLE OF TWO
 constexpr uint32_t num_slots_to_alloc = 1 << MAX_CODE_SIZE;
 
 CoverageTracker::CoverageTracker()
@@ -61,7 +62,11 @@ void CoverageTracker::Cover(uintptr_t src_addr, uintptr_t dst_addr)
 {
     // AFL-style --
     src_addr *= 2;
-    this->total++;
+
+    if (this->total < UINT64_MAX)
+    {
+        this->total++;
+    }
     const uint32_t bit_to_set = REGULATOR_FUZZ_TRANSFORM_ADDR(src_addr) ^
                                 REGULATOR_FUZZ_TRANSFORM_ADDR(dst_addr);
 
@@ -99,6 +104,65 @@ void CoverageTracker::Clear()
     this->total = 0;
 }
 
+/**
+ * bucketization lookup
+ */
+static const uint8_t count_class_lookup8[256] = {
+    0,
+
+    1,
+
+    2,
+
+    4,
+
+    8,8,8,8,
+
+    16,16,16,16,16,16,16,16,
+
+    32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,
+
+    64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,
+    64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,
+    64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,
+    64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,
+    64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,
+    64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,
+
+    128,128,128,128,128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+};
+
+void CoverageTracker::Bucketize()
+{
+    uint64_t *slot_ptr = reinterpret_cast<uint64_t *>(this->covmap);
+    uint8_t *curr;
+
+    for (size_t i=0; i<num_slots_to_alloc / sizeof(slot_ptr); i++)
+    {
+        if (slot_ptr[i] != 0)
+        {
+            curr = reinterpret_cast<uint8_t *>(&slot_ptr[i]);
+            curr[0] = count_class_lookup8[curr[0]];
+            curr[1] = count_class_lookup8[curr[1]];
+            curr[2] = count_class_lookup8[curr[2]];
+            curr[3] = count_class_lookup8[curr[3]];
+            curr[4] = count_class_lookup8[curr[4]];
+            curr[5] = count_class_lookup8[curr[5]];
+            curr[6] = count_class_lookup8[curr[6]];
+            curr[7] = count_class_lookup8[curr[7]];
+        }
+    }
+}
 
 void CoverageTracker::Union(CoverageTracker *other)
 {

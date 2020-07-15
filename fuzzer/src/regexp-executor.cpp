@@ -258,6 +258,7 @@ Result Exec(
 
     out->match_success = !(o2->IsNull());
     out->coverage_tracker = v8::internal::coverage_tracker;
+    out->coverage_tracker->Bucketize();
 
     uint64_t pumps = 0;
     while (v8::platform::PumpMessageLoop(platform.get(), isolate))

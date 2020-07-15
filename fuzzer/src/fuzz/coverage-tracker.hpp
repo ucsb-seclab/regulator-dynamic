@@ -84,6 +84,22 @@ public:
     bool MaximizesEdge(CoverageTracker *other) const;
 
     /**
+     * Simplifies the byte-map by putting each execution count
+     * into one of several categories:
+     * 
+     * 0,
+     * 1,
+     * 2,
+     * <= 4,
+     * <= 8,
+     * <= 16,
+     * <= 32,
+     * <= 127,
+     * <= 256
+     */
+    void Bucketize();
+
+    /**
      * Resets tracker
      */
     void Clear();
