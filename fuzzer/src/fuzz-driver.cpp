@@ -19,7 +19,7 @@ namespace regulator
 namespace fuzz
 {
 
-static const size_t N_CHILDREN_PER_PARENT = 100;
+static const size_t N_CHILDREN_PER_PARENT = 50;
 
 
 /**
@@ -326,17 +326,34 @@ inline void evaluate_child(
     FuzzCampaign<Char> *campaign,
     CorpusEntry<Char> *parent)
 {
+    bool has_magic_char = false;
+    if (sizeof(Char) == 2)
+    {
+        for (size_t i=0; i < strlen && !has_magic_char; i++)
+        {
+            if (child[i] == 0x03fa)
+            {
+                has_magic_char = true;
+            }
+        }
+    }
+
     regulator::executor::V8RegExpResult result;
 
 #ifdef REG_PROFILE
     std::chrono::steady_clock::time_point exec_start = std::chrono::steady_clock::now();
 #endif
+    constexpr auto enforce_encoding =
+        sizeof(Char) == 1
+        ? regulator::executor::kOnlyOneByte
+        : regulator::executor::kOnlyTwoByte;
+
     regulator::executor::Result result_code = regulator::executor::Exec(
         regexp,
         child,
         strlen,
         &result,
-        regulator::executor::kOnlyOneByte
+        enforce_encoding
     );
 
 #ifdef REG_PROFILE

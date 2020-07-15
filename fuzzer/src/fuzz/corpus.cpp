@@ -217,8 +217,6 @@ void Corpus<Char>::GenerateChildren(
     Char *last_buf = parent;
     size_t buflen = parent_len;
 
-    std::vector<Char> extra_interesting;
-
     for (size_t i = 0; i < n_children; i++)
     {
         Char *newbuf = new Char[buflen];
@@ -241,15 +239,13 @@ void Corpus<Char>::GenerateChildren(
             bit_flip(newbuf, buflen);
             break;
         case 4:
-            coparent = this->GetCoparent();
-            crossover(newbuf, buflen, coparent);
-            delete[] coparent;
+            crossover(newbuf, buflen, this->GetCoparent());
             break;
         case 5:
             duplicate_subsequence(newbuf, buflen);
             break;
         case 6:
-            replace_with_special(newbuf, buflen, extra_interesting);
+            replace_with_special(newbuf, buflen, *this->extra_interesting);
             break;
         case 7:
             rotate_once(newbuf, buflen);
@@ -356,15 +352,12 @@ inline void Corpus<Char>::SetInteresting(std::vector<Char> *interesting)
 }
 
 template<typename Char>
-Char *Corpus<Char>::GetCoparent()
+const Char * const Corpus<Char>::GetCoparent() const
 {
     size_t coparent_idx = static_cast<size_t>(random()) % (this->flushed_entries.size());
-    CorpusEntry<Char> *coparent = this->flushed_entries[coparent_idx];
+    const CorpusEntry<Char> *coparent = this->flushed_entries[coparent_idx];
 
-    Char *buf = new Char[coparent->buflen];
-    memcpy(buf, coparent->buf, coparent->buflen * sizeof(Char));
-
-    return buf;
+    return coparent->buf;
 }
 
 template<typename Char>

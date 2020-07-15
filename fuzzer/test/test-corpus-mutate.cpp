@@ -213,3 +213,60 @@ TEST_CASE( "crossover will use another buffer" )
 
     delete[] coparent;
 }
+
+TEST_CASE( "mutate will eventually place an interesting utf-16 char ")
+{
+    uint16_t parent[5];
+
+    uint16_t *coparent = new uint16_t[5];
+    coparent[0] = 'a';
+    coparent[1] = 'b';
+    coparent[2] = 'c';
+    coparent[3] = 'd';
+    coparent[4] = 'e';
+
+    f::Corpus<uint16_t> corpus;
+    corpus.Record(new f::CorpusEntry<uint16_t>(
+        coparent,
+        5,
+        new f::CoverageTracker()
+    ));
+
+    corpus.FlushGeneration();
+    std::vector<uint16_t *> children;
+    std::vector<uint16_t> *interesting = new std::vector<uint16_t>;
+    interesting->push_back(0xCAFE);
+    corpus.SetInteresting(interesting);
+
+    bool found_special = false;
+
+    for (size_t i=0; i < 200 && !found_special; i++)
+    {
+        children.clear();
+        parent[0] = 'w';
+        parent[1] = 'x';
+        parent[2] = 'y';
+        parent[3] = 'z';
+        parent[4] = '!';
+
+        corpus.GenerateChildren(
+            parent,
+            5,
+            10,
+            children
+        );
+
+        REQUIRE( children.size() == 10 );
+
+        for (size_t j=0; j<children.size(); j++)
+        {
+            for (size_t k=0; k<5; k++)
+            {
+                found_special = found_special || children[j][k] == 0xCAFE;
+            }
+            delete[] children[j];
+        }
+    }
+
+    REQUIRE( found_special );
+}

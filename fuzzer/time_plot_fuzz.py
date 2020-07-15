@@ -6,7 +6,7 @@ import argparse
 import re
 import random
 
-elapsed_pat = re.compile(r'Elapsed:\s+(\d+?\.?\d+) ')
+elapsed_pat = re.compile(r'Elapsed:\s+(\d+?\.?\d+)')
 total_pat = re.compile(r'Total=(\d+)')
 
 def main():
@@ -42,6 +42,13 @@ def main():
         action='store_true'
     )
 
+    parser.add_argument(
+        '-b', '--byte-width',
+        type=int,
+        default=1,
+        help='The number of bytes to fuzz (default 1)',
+    )
+
     args = parser.parse_args()
 
     if args.REGEXP == '':
@@ -56,6 +63,11 @@ def main():
 
     if args.timeout <= 0:
         print('ERROR: timeout must be positive\n')
+        parser.print_help()
+        exit(1)
+
+    if args.byte_width not in [1, 2]:
+        print('ERROR: byte width must be either 1 or 2\n')
         parser.print_help()
         exit(1)
 
@@ -76,6 +88,7 @@ def main():
             '-r', args.REGEXP,
             '-t', str(args.timeout),
             '-s', str(i * 2 + 100),
+            '-w', str(args.byte_width)
         ]
 
         if args.debug:
@@ -100,14 +113,27 @@ def main():
             if 'DEBUG' in line:
                 continue
 
+            elapsed_line = ''
+            summary_line = ''
+
+            if line.startswith('Elapsed'):
+                elapsed_line = line
+                summary_line = prog.stdout.readline().decode('ascii').strip()
+            else:
+                print(line)
+                print('UNKNOWN OUTPUT')
+                exit(1)
+
+            print(summary_line)
+
             # Find out how much time has elapsed
-            mat1 = elapsed_pat.search(line)
+            mat1 = elapsed_pat.search(elapsed_line)
             if mat1 is None:
-                print('WHAT', line)
+                print('WHAT', elapsed_line)
             elapsed = float(mat1.group(1))
 
             # Find out what the max-cost string is
-            mat2 = total_pat.search(line)
+            mat2 = total_pat.search(summary_line)
             maxcost = int(mat2.group(1))
 
             fuzz_progress_elapsed.append(elapsed)

@@ -48,7 +48,7 @@ void bit_flip(Char *buf, size_t buflen);
  * Copy a random substring from coparent into buf
  */
 template<typename Char>
-void crossover(Char *buf, size_t buflen, Char *&coparent);
+void crossover(Char *buf, size_t buflen, const Char * const &coparent);
 
 /**
  * Select a substring of `buf` at random and replicate it elsewhere

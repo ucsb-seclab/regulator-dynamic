@@ -142,10 +142,10 @@ build/coverage-tracker.o: src/fuzz/coverage-tracker.cpp src/fuzz/coverage-tracke
 	g++ -c ${CFLAGS} -Ideps/murmurhash -o $@ src/fuzz/coverage-tracker.cpp
 
 build/corpus.o: src/fuzz/corpus.cpp src/fuzz/corpus.hpp src/fuzz/coverage-tracker.hpp
-	g++ -c ${CFLAGS} -o $@ src/fuzz/corpus.cpp
+	g++ -c ${CFLAGS} -O3 -o $@ src/fuzz/corpus.cpp
 
 build/mutations.o: src/fuzz/mutations.cpp src/fuzz/mutations.hpp
-	g++ -c ${CFLAGS} -o $@ src/fuzz/mutations.cpp
+	g++ -c ${CFLAGS} -O3 -o $@ src/fuzz/mutations.cpp
 
 build/flags.o: src/flags.hpp src/flags.cpp
 	g++ -c ${CFLAGS} -o $@ src/flags.cpp

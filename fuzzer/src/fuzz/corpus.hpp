@@ -162,8 +162,10 @@ private:
 
     /**
      * Get an arbitrary buffer from the corpus to use as a coparent
+     * 
+     * NOTE: DO NOT MOIDIFY THE COPARENT
      */
-    Char *GetCoparent();
+    const Char * const GetCoparent() const;
 
     /**
      * Adds one CorpusEntry to the heap. Performs no bounds checks

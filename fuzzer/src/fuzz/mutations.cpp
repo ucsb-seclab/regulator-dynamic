@@ -84,7 +84,7 @@ inline void bit_flip(Char *buf, size_t buflen)
 }
 
 template<typename Char>
-inline void crossover(Char *buf, size_t buflen, Char *&coparent)
+inline void crossover(Char *buf, size_t buflen, const Char * const &coparent)
 {
     size_t src = static_cast<size_t>(random()) % buflen;
     // end is exclusive
@@ -153,21 +153,29 @@ inline void get_interesting_arr(const uint16_t *&ptr, size_t &len)
 template<typename Char>
 inline void replace_with_special(Char *buf, size_t buflen, std::vector<Char> &extra_interesting)
 {
-    const Char *interesting_arr;
-    size_t num_builtin_interesting;
-    get_interesting_arr(interesting_arr, num_builtin_interesting);
+    // Procedure for character selection:
+    // 1. Choose whether to use built-in special chars set (p = 50%)
+    //    or extra-added special chars set (p = 50%). If no extra special
+    //    chars exist, use built-in chars.
+    // 2. Choose, with equal probability, a character from the set.
+
+    bool use_builtin = extra_interesting.size() == 0 || ((random() & 0x1) == 1);
 
     Char c;
 
-    size_t chosen_idx = static_cast<size_t>(random()) % (num_builtin_interesting + extra_interesting.size());
-
-    if (chosen_idx >= num_builtin_interesting)
+    if (use_builtin)
     {
-        c = extra_interesting[chosen_idx - num_builtin_interesting];
+        const Char *interesting_arr;
+        size_t num_builtin_interesting;
+        get_interesting_arr(interesting_arr, num_builtin_interesting);
+
+        size_t chosen_idx = static_cast<size_t>(random()) % num_builtin_interesting;
+        c = interesting_arr[chosen_idx];
     }
     else
     {
-        c = interesting_arr[chosen_idx];
+        size_t chosen_idx = static_cast<size_t>(random()) % extra_interesting.size();
+        c = extra_interesting[chosen_idx];
     }
 
     size_t i = static_cast<size_t>(random()) % buflen;
@@ -204,7 +212,7 @@ template void mutate_random_char(uint8_t *buf, size_t buflen);
 template void arith_random_char(uint8_t *buf, size_t buflen);
 template void swap_random_char(uint8_t *buf, size_t buflen);
 template void bit_flip(uint8_t *buf, size_t buflen);
-template void crossover(uint8_t *buf, size_t buflen, uint8_t *&coparent);
+template void crossover(uint8_t *buf, size_t buflen, const uint8_t * const &coparent);
 template void duplicate_subsequence(uint8_t *buf, size_t buflen);
 template void replace_with_special(uint8_t *buf, size_t buflen, std::vector<uint8_t> &extra_interesting);
 template void rotate_once(uint8_t *buf, size_t buflen);
@@ -213,7 +221,7 @@ template void mutate_random_char(uint16_t *buf, size_t buflen);
 template void arith_random_char(uint16_t *buf, size_t buflen);
 template void swap_random_char(uint16_t *buf, size_t buflen);
 template void bit_flip(uint16_t *buf, size_t buflen);
-template void crossover(uint16_t *buf, size_t buflen, uint16_t *&coparent);
+template void crossover(uint16_t *buf, size_t buflen, const uint16_t * const &coparent);
 template void duplicate_subsequence(uint16_t *buf, size_t buflen);
 template void replace_with_special(uint16_t *buf, size_t buflen, std::vector<uint16_t> &extra_interesting);
 template void rotate_once(uint16_t *buf, size_t buflen);
