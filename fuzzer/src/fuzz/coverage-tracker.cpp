@@ -16,15 +16,11 @@ namespace regulator
 namespace fuzz
 {
 
-// NOTE: I believe this allocs one too many slots
-// KEEP A MULTIPLE OF TWO
-constexpr uint32_t num_slots_to_alloc = 1 << MAX_CODE_SIZE;
-
 CoverageTracker::CoverageTracker()
 {
     this->path_hash = 0;
     this->total = 0;
-    this->covmap = new cov_t[num_slots_to_alloc];
+    this->covmap = new cov_t[MAP_SIZE];
     this->Clear();
     this->_deleted = false;
 }
@@ -32,8 +28,8 @@ CoverageTracker::CoverageTracker()
 CoverageTracker::CoverageTracker(const CoverageTracker &other)
 {
     this->total = other.total;
-    this->covmap = new cov_t[num_slots_to_alloc];
-    memcpy(this->covmap, other.covmap, num_slots_to_alloc * sizeof(cov_t));
+    this->covmap = new cov_t[MAP_SIZE];
+    memcpy(this->covmap, other.covmap, MAP_SIZE * sizeof(cov_t));
     this->path_hash = other.path_hash;
     this->_deleted = false;
 }
@@ -100,7 +96,7 @@ uint64_t CoverageTracker::Total()
 
 void CoverageTracker::Clear()
 {
-    memset(this->covmap, 0, num_slots_to_alloc * sizeof(cov_t));
+    memset(this->covmap, 0, MAP_SIZE * sizeof(cov_t));
     this->total = 0;
 }
 
@@ -147,7 +143,7 @@ void CoverageTracker::Bucketize()
     uint64_t *slot_ptr = reinterpret_cast<uint64_t *>(this->covmap);
     uint8_t *curr;
 
-    for (size_t i=0; i<num_slots_to_alloc / sizeof(slot_ptr); i++)
+    for (size_t i=0; i<MAP_SIZE / sizeof(slot_ptr); i++)
     {
         if (slot_ptr[i] != 0)
         {
@@ -166,7 +162,7 @@ void CoverageTracker::Bucketize()
 
 void CoverageTracker::Union(CoverageTracker *other)
 {
-    for (size_t i=0; i < num_slots_to_alloc; i++)
+    for (size_t i=0; i < MAP_SIZE; i++)
     {
         this->covmap[i] = std::max(this->covmap[i], other->covmap[i]);
     }
@@ -183,7 +179,7 @@ bool CoverageTracker::HasNewPath(CoverageTracker *other)
     }
 
     // Check if `other` has ANY more coverage on an individual
-    for (size_t i=0; i < num_slots_to_alloc; i++)
+    for (size_t i=0; i < MAP_SIZE; i++)
     {
         if (other->covmap[i] > this->covmap[i])
         {
@@ -194,9 +190,9 @@ bool CoverageTracker::HasNewPath(CoverageTracker *other)
     return false;
 }
 
-bool CoverageTracker::MaximizesEdge(CoverageTracker *other) const
+bool CoverageTracker::MaximizesAnyEdge(CoverageTracker *other) const
 {
-    for (size_t i=0; i < num_slots_to_alloc; i++)
+    for (size_t i=0; i < MAP_SIZE; i++)
     {
         if (this->covmap[i] != 0 && other->covmap[i] >= this->covmap[i])
         {
@@ -205,16 +201,20 @@ bool CoverageTracker::MaximizesEdge(CoverageTracker *other) const
     }
 }
 
-size_t CoverageTracker::MemoryFootprint() const
+bool CoverageTracker::EdgeIsEqual(CoverageTracker *other, size_t edge_id) const
 {
-    return sizeof(CoverageTracker) + sizeof(cov_t) * num_slots_to_alloc;
+    return this->covmap[edge_id] == other->covmap[edge_id];
 }
 
+size_t CoverageTracker::MemoryFootprint() const
+{
+    return sizeof(CoverageTracker) + sizeof(cov_t) * MAP_SIZE;
+}
 
 double CoverageTracker::Residency() const
 {
     size_t num_occupied_slots = 0;
-    for (size_t i=0; i < num_slots_to_alloc; i++)
+    for (size_t i=0; i < MAP_SIZE; i++)
     {
         // todo: do some loop unrolling here
         if (this->covmap[i] != 0)
@@ -223,7 +223,7 @@ double CoverageTracker::Residency() const
         }
     }
 
-    return num_occupied_slots / static_cast<double>(num_slots_to_alloc);
+    return num_occupied_slots / static_cast<double>(MAP_SIZE);
 }
 
 }

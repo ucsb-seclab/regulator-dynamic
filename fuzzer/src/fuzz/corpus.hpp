@@ -121,6 +121,12 @@ public:
     bool HasNewPath(CoverageTracker *coverage_tracker);
 
     /**
+     * Returns True if this tracker object maximizes the known upper
+     * bound of executions at the given edge index
+     */
+    bool MaximizesEdge(CoverageTracker *coverage_tracker, size_t edge_idx) const;
+
+    /**
      * Mark the current generation sweep as complete. Flushes the pending,
      * non-redundant entries.
      */

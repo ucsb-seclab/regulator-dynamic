@@ -1,4 +1,5 @@
 #include "corpus.hpp"
+#include "coverage-tracker.hpp"
 #include "mutations.hpp"
 
 #include <cstring>
@@ -287,7 +288,7 @@ bool Corpus<Char>::MaximizesUpperBound(CoverageTracker *coverage_tracker)
         return false;
     }
 
-    return this->coverage_upper_bound->MaximizesEdge(coverage_tracker);
+    return this->coverage_upper_bound->MaximizesAnyEdge(coverage_tracker);
 }
 
 
@@ -297,6 +298,11 @@ bool Corpus<Char>::HasNewPath(CoverageTracker *coverage_tracker)
     return this->coverage_upper_bound->HasNewPath(coverage_tracker);
 }
 
+template<typename Char>
+bool Corpus<Char>::MaximizesEdge(CoverageTracker *coverage_tracker, size_t edge_idx) const
+{
+    return this->coverage_upper_bound->EdgeIsEqual(coverage_tracker, edge_idx);
+}
 
 template<typename Char>
 void Corpus<Char>::FlushGeneration()

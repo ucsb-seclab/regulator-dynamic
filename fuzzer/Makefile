@@ -116,6 +116,7 @@ FUZZER_DEPS += build/flags.o
 FUZZER_DEPS += build/fuzz-driver.o
 FUZZER_DEPS += build/murmurhash.o
 FUZZER_DEPS += build/interesting-char-finder.o
+FUZZER_DEPS += build/work-queue.o
 
 build/fuzzer: node ${FUZZER_DEPS} ${V8_DEPS} build/libv8_base_without_compiler.a
 	mkdir -p build
@@ -152,6 +153,9 @@ build/flags.o: src/flags.hpp src/flags.cpp
 
 build/interesting-char-finder.o: src/interesting-char-finder.cpp src/interesting-char-finder.hpp src/regexp-executor.hpp
 	g++ -c ${CFLAGS} -o $@ src/interesting-char-finder.cpp
+
+build/work-queue.o: src/fuzz/work-queue.cpp src/fuzz/work-queue.hpp src/fuzz/corpus.hpp
+	g++ -c ${CFLAGS} -o $@ src/fuzz/work-queue.cpp
 
 build/murmurhash.o: deps/murmurhash/murmur3.c deps/murmurhash/murmur3.h
 	gcc -c ${CFLAGS} -Ideps/murmurhash -O3 -o $@ deps/murmurhash/murmur3.c

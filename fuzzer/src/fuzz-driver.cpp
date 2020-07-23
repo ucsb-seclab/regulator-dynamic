@@ -1,7 +1,10 @@
 #include "src/execution/isolate.h"
 
-#include "fuzz/corpus.hpp"
 #include "fuzz-driver.hpp"
+
+#include "fuzz/corpus.hpp"
+#include "fuzz/work-queue.hpp"
+
 #include "regexp-executor.hpp"
 #include "interesting-char-finder.hpp"
 #include "flags.hpp"
@@ -33,11 +36,12 @@ public:
         : corpus(new Corpus<Char>()),
           executions_since_last_render(0),
           num_generations(0),
-          generation_progress(0)
+          work_queue(new Queue<Char>())
         {};
     ~FuzzCampaign()
     {
         delete this->corpus;
+        delete this->work_queue;
     }
 #ifdef REG_PROFILE
     /**
@@ -73,9 +77,9 @@ public:
     uintmax_t num_generations;
 
     /**
-     * The next candidate index in the generation
+     * The queue of parents to fuzz
      */
-    size_t generation_progress;
+    regulator::fuzz::Queue<Char> *work_queue;
 
     /**
      * The time at which fuzz work should yield for other work
@@ -326,18 +330,6 @@ inline void evaluate_child(
     FuzzCampaign<Char> *campaign,
     CorpusEntry<Char> *parent)
 {
-    bool has_magic_char = false;
-    if (sizeof(Char) == 2)
-    {
-        for (size_t i=0; i < strlen && !has_magic_char; i++)
-        {
-            if (child[i] == 0x03fa)
-            {
-                has_magic_char = true;
-            }
-        }
-    }
-
     regulator::executor::V8RegExpResult result;
 
 #ifdef REG_PROFILE
@@ -408,11 +400,11 @@ inline void work_on_corpus(
     // fixed-length number of children
     std::vector<Char *> children_to_eval;
 
-    for (;std::chrono::steady_clock::now() < campaign->yield_deadline; campaign->generation_progress++)
+    for (;std::chrono::steady_clock::now() < campaign->yield_deadline;)
     {
-        // If we've already fuzzed everything in this corpus, flush and
-        // start again
-        if (campaign->generation_progress >= campaign->corpus->Size())
+        // If we've already fuzzed everything in the queue, flush and
+        // re-build the queue
+        if (!campaign->work_queue->HasNext())
         {
 #ifdef REG_PROFILE
             std::chrono::steady_clock::time_point econo_start = std::chrono::steady_clock::now();
@@ -424,25 +416,11 @@ inline void work_on_corpus(
 #endif
 
             campaign->num_generations++;
-            campaign->generation_progress = 0;
+            
+            campaign->work_queue->Fill(campaign->corpus);
         }
 
-        CorpusEntry<Char> *parent = campaign->corpus->Get(campaign->generation_progress);
-
-        // Choose whether to use this entry as a parent
-
-        // alpha = prob(selected) * 1024 - 1
-        uint64_t alpha = 9; // approx. 1%
-        if (campaign->corpus->MaximizesUpperBound(parent->GetCoverageTracker()))
-        {
-            alpha = 1024 - 1;
-        }
-
-        if (random() & (1024 - 1) > alpha)
-        {
-            // This entry was NOT selected to be a parent
-            continue;
-        }
+        CorpusEntry<Char> *parent = campaign->work_queue->Pop();
 
         // Create children
 #ifdef REG_PROFILE

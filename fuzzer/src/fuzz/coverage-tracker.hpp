@@ -12,6 +12,16 @@ namespace regulator
 namespace fuzz
 {
 
+typedef __int128_t path_hash_t;
+
+/**
+ * Tracks coverage of a single cfg edge
+ */
+typedef uint8_t cov_t;
+
+
+constexpr cov_t COV_MAX = ~static_cast<cov_t>(0);
+
 /**
  * The number of pc address (least-significant) bits to use.
  */
@@ -25,14 +35,11 @@ constexpr uint32_t CODE_MASK = (1 << MAX_CODE_SIZE) - 1;
 
 #define REGULATOR_FUZZ_TRANSFORM_ADDR(x) ((static_cast<uint32_t>(x) >> 3) & CODE_MASK)
 
-typedef __int128_t path_hash_t;
 
-/**
- * Tracks coverage of a single cfg edge
- */
-typedef uint8_t cov_t;
+// NOTE: I believe this allocs one too many slots, but oh well.
+// KEEP A MULTIPLE OF TWO
+constexpr uint32_t MAP_SIZE = 1 << MAX_CODE_SIZE;
 
-constexpr cov_t COV_MAX = ~static_cast<cov_t>(0);
 
 /**
  * AFL-style coverage tracker.
@@ -78,10 +85,16 @@ public:
 
     /**
      * Returns true if `other` contains any branch transitions
-     * which maximizes (or exceeds) the known execution count of an
-     * edge in `this`.
+     * which maximizes (or exceeds) the known execution count of its
+     * corresponding edge in `this`.
      */
-    bool MaximizesEdge(CoverageTracker *other) const;
+    bool MaximizesAnyEdge(CoverageTracker *other) const;
+
+    /**
+     * Returns true if the edge `edge_id` has the same value
+     * in both `this` and `other`.
+     */
+    bool EdgeIsEqual(CoverageTracker *other, size_t edge_id) const;
 
     /**
      * Simplifies the byte-map by putting each execution count
