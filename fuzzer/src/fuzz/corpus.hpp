@@ -27,6 +27,10 @@ namespace fuzz
 // Keep a multiple of 2.
 const size_t CORPUS_PATH_HASHTABLE_SIZE = 4096;
 
+
+// The maximum staleness score achievable by an entry
+const uint32_t MAX_STALENESS_SCORE = 4096;
+
 /**
  * A single entry in the corpus, ie, a string.
  * Also contains some meta-information about past
@@ -101,6 +105,21 @@ public:
      * NOTE: DO NOT MODIFY RETURN VALUE
      */
     CorpusEntry<Char> *Get(size_t i);
+
+    /**
+     * After an execution of the regexp, bump the internal staleness
+     * map according to observed coverage from the run.
+     */
+    void BumpStaleness(CoverageTracker *coverage_tracker);
+
+    /**
+     * Get a heuristic measure of how 'stale' this execution's coverage
+     * trace is.
+     * 
+     * Higher return value = more stale.
+     * Seel also: MAX_STALENESS_SCORE
+     */
+    size_t GetStalenessScore(CoverageTracker *coverage_tracker);
 
     /**
      * Gets the maximum opcount entry known in this corpus
@@ -209,6 +228,11 @@ private:
     std::vector<CorpusEntry<Char> *> flushed_entries;
 
     std::vector<path_hash_t> hashtable[CORPUS_PATH_HASHTABLE_SIZE];
+
+    /**
+     * A record of how "stale" each component is
+     */
+    uint32_t staleness[MAP_SIZE];
 };
 
 }

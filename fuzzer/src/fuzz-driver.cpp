@@ -22,7 +22,7 @@ namespace regulator
 namespace fuzz
 {
 
-static const size_t N_CHILDREN_PER_PARENT = 50;
+static const size_t N_CHILDREN_PER_PARENT = 200;
 
 
 /**
@@ -130,7 +130,7 @@ inline void work_interrupt(exec_context &ctx)
     ctx.exit_requested = now >= ctx.deadline;
 
     // Print stuff to screen if we haven't done that lately
-    if ((now - ctx.last_screen_render) > std::chrono::milliseconds(500))
+    if ((now - ctx.last_screen_render) > std::chrono::milliseconds(100))
     {
         auto elapsed = now - ctx.begin;
         double seconds_elapsed = elapsed.count() / (static_cast<double>(std::nano::den));
@@ -357,13 +357,17 @@ inline void evaluate_child(
         // Execution succeeded, proceed to analyze how 'good' this was
         campaign->executions_since_last_render++;
 
+        result.coverage_tracker->Bucketize();
+
         // If this child uncovered new behavior, then add it to new_children
         // (later added to corpus, which assumes ownership)
         if (
-                parent->GetCoverageTracker()->HasNewPath(result.coverage_tracker) &&
+                campaign->corpus->HasNewPath(result.coverage_tracker) &&
                 !campaign->corpus->IsRedundant(result.coverage_tracker)
             )
         {
+            campaign->corpus->BumpStaleness(result.coverage_tracker);
+
             campaign->corpus->Record(
                 new CorpusEntry<Char>(
                     child,

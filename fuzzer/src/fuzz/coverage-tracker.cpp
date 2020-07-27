@@ -206,6 +206,16 @@ bool CoverageTracker::EdgeIsEqual(CoverageTracker *other, size_t edge_id) const
     return this->covmap[edge_id] == other->covmap[edge_id];
 }
 
+bool CoverageTracker::EdgeIsGreater(CoverageTracker *other, size_t edge_id) const
+{
+    return this->covmap[edge_id] > other->covmap[edge_id];
+}
+
+bool CoverageTracker::EdgeIsCovered(size_t edge_id) const
+{
+    return this->covmap[edge_id] > 0;
+}
+
 size_t CoverageTracker::MemoryFootprint() const
 {
     return sizeof(CoverageTracker) + sizeof(cov_t) * MAP_SIZE;

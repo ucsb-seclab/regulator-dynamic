@@ -119,6 +119,7 @@ Corpus<Char>::Corpus()
     this->coverage_upper_bound = new CoverageTracker();
     this->maximizing_entry = nullptr;
     this->extra_interesting = new std::vector<Char>();
+    memset(this->staleness, 0, sizeof(this->staleness));
 }
 
 
@@ -162,6 +163,15 @@ template<typename Char>
 void Corpus<Char>::Add(CorpusEntry<Char> *entry)
 {
     this->flushed_entries.push_back(entry);
+
+    // Reset staleness for any edges which were just exceeded
+    for (size_t i=0; i<MAP_SIZE; i++)
+    {
+        if (entry->GetCoverageTracker()->EdgeIsGreater(this->coverage_upper_bound, i))
+        {
+            this->staleness[i] = 0;
+        }
+    }
 
     this->coverage_upper_bound->Union(entry->coverage_tracker);
 
@@ -225,41 +235,48 @@ void Corpus<Char>::GenerateChildren(
         Char *coparent;
 
         // select a mutation to apply
-        switch (random() % 8)
+        switch (random() % 16)
         {
         case 0:
             mutate_random_char(newbuf, buflen);
             break;
         case 1:
+        case 2:
             arith_random_char(newbuf, buflen);
             break;
-        case 2:
+        case 3:
+        case 4:
             swap_random_char(newbuf, buflen);
             break;
-        case 3:
-            bit_flip(newbuf, buflen);
-            break;
-        case 4:
+            // bit_flip(newbuf, buflen);
+            // break;
+        case 6:
+        case 7:
             crossover(newbuf, buflen, this->GetCoparent());
             break;
-        case 5:
+        case 8:
+        case 9:
             duplicate_subsequence(newbuf, buflen);
             break;
-        case 6:
+        case 10:
+        case 11:
+        case 12:
+        case 13:
             replace_with_special(newbuf, buflen, *this->extra_interesting);
             break;
-        case 7:
+        case 5:
+        case 14:
+        case 15:
             rotate_once(newbuf, buflen);
             break;
         default:
             throw "Unreachable";
         }
 
-        last_buf = newbuf;
+        // last_buf = newbuf;
         out.push_back(newbuf);
     }
 }
-
 
 template<typename Char>
 CorpusEntry<Char> *Corpus<Char>::Get(size_t i)
@@ -270,6 +287,60 @@ CorpusEntry<Char> *Corpus<Char>::Get(size_t i)
     }
 
     return this->flushed_entries[i];
+}
+
+
+template<typename Char>
+void Corpus<Char>::BumpStaleness(CoverageTracker *coverage_tracker)
+{
+    for (size_t i=0; i < MAP_SIZE; i++)
+    {
+        if  (
+                this->staleness[i] < UINT32_MAX &&
+                coverage_tracker->EdgeIsEqual(this->coverage_upper_bound, i)
+            )
+        {
+            // NOTE: we don't need to reset staleness to 0 upon exceeding the upper
+            // bound here, that will be done at flush-time, below.
+            this->staleness[i]++;
+        }
+    }
+}
+
+
+template<typename Char>
+size_t Corpus<Char>::GetStalenessScore(CoverageTracker *coverage_tracker)
+{
+    // Maximum staleness seen across all components
+    // = 1 to avoid div-by-zero when staleness is in initial state (all zero)
+    uint32_t global_max_staleness = 1;
+
+    // Minimum staleness seen across all components
+    uint32_t global_min_staleness = UINT32_MAX;
+
+    // Minimum staleness seen on a component maximized by `coverage_tracker`
+    uint32_t my_min_staleness = UINT32_MAX;
+
+    for (size_t i=0; i < MAP_SIZE; i++)
+    {
+        if (this->coverage_upper_bound->EdgeIsCovered(i))
+        {
+            global_max_staleness = std::max(global_max_staleness, this->staleness[i]);
+            global_min_staleness = std::min(global_min_staleness, this->staleness[i]);
+
+            if (this->coverage_upper_bound->EdgeIsEqual(coverage_tracker, i))
+            {
+                // the entry maximizes this upper bound
+                my_min_staleness = std::min(my_min_staleness, this->staleness[i]);
+            }
+        }
+    }
+
+    // This can occur if the entry is not maximizing -- staleness has no practical meaning,
+    // so just set this here
+    my_min_staleness = std::min(my_min_staleness, global_min_staleness);
+
+    return (MAX_STALENESS_SCORE * (my_min_staleness - global_min_staleness)) / global_max_staleness;
 }
 
 

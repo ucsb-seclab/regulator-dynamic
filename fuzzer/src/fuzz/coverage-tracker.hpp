@@ -97,6 +97,18 @@ public:
     bool EdgeIsEqual(CoverageTracker *other, size_t edge_id) const;
 
     /**
+     * Returns true if the edge `edge_id` has explicitly more
+     * hits in `this` than it does in `other`
+     */
+    bool EdgeIsGreater(CoverageTracker *other, size_t edge_id) const;
+
+    /**
+     * Returns true if the edge `edge_id` was covered in `this`
+     * (ie has non-zero execution count).
+     */
+    bool EdgeIsCovered(size_t edge_id) const;
+
+    /**
      * Simplifies the byte-map by putting each execution count
      * into one of several categories:
      * 
