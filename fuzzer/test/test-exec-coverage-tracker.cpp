@@ -1,4 +1,5 @@
 #include <iostream>
+#include <memory>
 
 #include "v8.h"
 #include "regexp-executor.hpp"
@@ -58,11 +59,8 @@ TEST_CASE( "Coverage should increase as regexp match progresses" )
         &exec_result1
     );
 
-    // prevent the original coverage tracker from being deleted
-    v8::internal::coverage_tracker = nullptr;
-
     REQUIRE( exec_result_status == e::kSuccess );
-    
+
     e::V8RegExpResult exec_result2;
     std::string subject2 = "abdefgh ";
     exec_result_status = e::Exec<uint8_t>(

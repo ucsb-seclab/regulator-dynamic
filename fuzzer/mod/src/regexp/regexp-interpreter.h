@@ -20,13 +20,6 @@ namespace v8 {
 namespace internal {
 
 
-// ------- mod_mcl_2020 -------
-
-// Cost of all instructions executed in the most recent regexp run
-extern ::regulator::fuzz::CoverageTracker *coverage_tracker;
-
-// ------- <end> mod_mcl_2020 -------
-
 class V8_EXPORT_PRIVATE IrregexpInterpreter : public AllStatic {
  public:
   enum Result {
@@ -36,13 +29,22 @@ class V8_EXPORT_PRIVATE IrregexpInterpreter : public AllStatic {
     RETRY = RegExp::kInternalRegExpRetry,
   };
 
+  // ------- mod_mcl_2020 -------
   // In case a StackOverflow occurs, a StackOverflowException is created and
   // EXCEPTION is returned.
   static Result MatchForCallFromRuntime(Isolate* isolate,
                                         Handle<JSRegExp> regexp,
                                         Handle<String> subject_string,
                                         int* registers, int registers_length,
+                                        int start_position,
+                                        regulator::fuzz::CoverageTracker *coverage_tracker);
+  
+  static Result MatchForCallFromRuntime(Isolate* isolate,
+                                        Handle<JSRegExp> regexp,
+                                        Handle<String> subject_string,
+                                        int* registers, int registers_length,
                                         int start_position);
+  // ------- (end) mod_mcl_2020 -------
 
   // In case a StackOverflow occurs, EXCEPTION is returned. The caller is
   // responsible for creating the exception.
@@ -58,16 +60,38 @@ class V8_EXPORT_PRIVATE IrregexpInterpreter : public AllStatic {
                                    RegExp::CallOrigin call_origin,
                                    Isolate* isolate, Address regexp);
 
+  // ------- mod_mcl_2020 -------
+
   static Result MatchInternal(Isolate* isolate, ByteArray code_array,
                               String subject_string, int* registers,
                               int registers_length, int start_position,
                               RegExp::CallOrigin call_origin,
                               uint32_t backtrack_limit);
 
+  static Result MatchInternal(Isolate* isolate, ByteArray code_array,
+                              String subject_string, int* registers,
+                              int registers_length, int start_position,
+                              RegExp::CallOrigin call_origin,
+                              uint32_t backtrack_limit,
+                              regulator::fuzz::CoverageTracker *coverage_tracker);
+
+  // ------- (end) mod_mcl_2020 -------
+
  private:
+
+  // ------- mod_mcl_2020 -------
+
+  static Result Match(Isolate* isolate, JSRegExp regexp, String subject_string,
+                      int* registers, int registers_length, int start_position,
+                      RegExp::CallOrigin call_origin,
+                      regulator::fuzz::CoverageTracker *coverage_tracker);
+
   static Result Match(Isolate* isolate, JSRegExp regexp, String subject_string,
                       int* registers, int registers_length, int start_position,
                       RegExp::CallOrigin call_origin);
+
+  // ------- (end) mod_mcl_2020 -------
+
 };
 
 }  // namespace internal

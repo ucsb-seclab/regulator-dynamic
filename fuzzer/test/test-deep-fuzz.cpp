@@ -20,14 +20,11 @@ TEST_CASE( "expanding on hidden catastrophic backtracking is rewarded" )
     v8::Local<v8::Context> ctx = v8::Context::New(isolate);
     ctx->Enter();
 
-    REQUIRE(v8::internal::coverage_tracker == nullptr);
-
     e::V8RegExp regexp;
     std::string sz_regexp = "\\d+1\\d+2(b|\\w)+c";
     e::Result compile_result_status = e::Compile(sz_regexp.c_str(), "", &regexp);
 
     REQUIRE( compile_result_status == e::kSuccess );
-    REQUIRE( v8::internal::coverage_tracker == nullptr );
     REQUIRE_FALSE( regexp.regexp.is_null() );
 
     e::Result exec_result_status;

@@ -7,6 +7,7 @@
 
 #include "src/objects/js-regexp.h"
 #include "src/regexp/regexp-error.h"
+#include "fuzz/coverage-tracker.hpp"
 
 namespace v8 {
 namespace internal {
@@ -78,6 +79,17 @@ class RegExp final : public AllStatic {
     kFromRuntime = 0,
     kFromJs = 1,
   };
+
+  // ------- mod_mcl_2020 -------
+  V8_EXPORT_PRIVATE V8_WARN_UNUSED_RESULT static MaybeHandle<Object> Exec(
+      Isolate* isolate,
+      Handle<JSRegExp> regexp,
+      Handle<String> subject,
+      int index,
+      Handle<RegExpMatchInfo> last_match_info,
+      regulator::fuzz::CoverageTracker *coverage_tracker
+  );
+  // ------- (end) mod_mcl_2020 -------
 
   // See ECMA-262 section 15.10.6.2.
   // This function calls the garbage collector if necessary.

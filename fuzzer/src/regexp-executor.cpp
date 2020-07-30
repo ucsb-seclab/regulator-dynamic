@@ -2,6 +2,7 @@
 
 #include <string>
 #include <iostream>
+#include <memory>
 
 #include "v8.h"
 #include "src/execution/isolate.h"
@@ -61,11 +62,6 @@ V8RegExpResult::~V8RegExpResult()
 
 v8::Isolate *Initialize()
 {
-    // NOTE: if this is already set to a non-deleted coverage tracker then
-    // this will leak memory. That's probably okay, because we'll only be
-    // calling this more than once from tests.
-    v8::internal::coverage_tracker = nullptr;
-
     if (_initialized)
     {
         return isolate;
@@ -163,10 +159,6 @@ Result Compile(const char *pattern, const char *flags, V8RegExp *out)
 
     out->regexp = h_regexp;
 
-    // Avoid leaking the memory of the CoverageTracker
-    delete v8::internal::coverage_tracker;
-    v8::internal::coverage_tracker = nullptr;
-
     return Result::kSuccess;
 }
 
@@ -247,8 +239,16 @@ Result Exec(
     int capture_count = regexp->regexp->CaptureCount();
     v8::internal::Handle<v8::internal::RegExpMatchInfo> match_info = i_isolate->factory()->NewRegExpMatchInfo();
 
+    regulator::fuzz::CoverageTracker *coverage_tracker = new regulator::fuzz::CoverageTracker();
+
     v8::internal::Handle<v8::internal::Object> o2 = v8::internal::RegExp::Exec(
-            i_isolate, regexp->regexp, h_subject, 0, match_info).ToHandleChecked();
+        i_isolate,
+        regexp->regexp,
+        h_subject,
+        0,
+        match_info,
+        coverage_tracker
+    ).ToHandleChecked();
 
 
     if (i_isolate->has_pending_exception())
@@ -257,7 +257,7 @@ Result Exec(
     }
 
     out->match_success = !(o2->IsNull());
-    out->coverage_tracker = v8::internal::coverage_tracker;
+    out->coverage_tracker = coverage_tracker;
     out->coverage_tracker->Bucketize();
 
     uint64_t pumps = 0;

@@ -65,13 +65,10 @@ TEST_CASE( "opcount should increase as match generally increases" ) {
     v8::Local<v8::Context> ctx = v8::Context::New(isolate);
     ctx->Enter();
 
-    REQUIRE(v8::internal::coverage_tracker == nullptr);
-
     e::V8RegExp regexp;
     e::Result compile_result_status = e::Compile("foo+", "", &regexp);
 
     REQUIRE( compile_result_status == e::kSuccess );
-    REQUIRE( v8::internal::coverage_tracker == nullptr );
     REQUIRE_FALSE( regexp.regexp.is_null() );
 
     e::V8RegExpResult exec_result1;
@@ -108,14 +105,11 @@ TEST_CASE( "can execute against 16-bit strings" )
     v8::Local<v8::Context> ctx = v8::Context::New(isolate);
     ctx->Enter();
 
-    REQUIRE(v8::internal::coverage_tracker == nullptr);
-
     e::V8RegExp regexp;
     std::string sz_regexp = "f\\u013e\\u013e[f]";
     e::Result compile_result_status = e::Compile(sz_regexp.c_str(), "", &regexp);
 
     REQUIRE( compile_result_status == e::kSuccess );
-    REQUIRE( v8::internal::coverage_tracker == nullptr );
     REQUIRE_FALSE( regexp.regexp.is_null() );
 
     uint16_t negative_subject[] = {

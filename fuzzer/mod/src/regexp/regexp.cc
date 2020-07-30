@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <memory>
+
 #include "src/regexp/regexp.h"
 
 #include "src/codegen/compilation-cache.h"
@@ -58,6 +60,18 @@ class RegExpImpl final : public AllStatic {
   static int IrregexpExecRaw(Isolate* isolate, Handle<JSRegExp> regexp,
                              Handle<String> subject, int index, int32_t* output,
                              int output_size);
+
+  // ------- mod_mcl_2020 -------
+  static int IrregexpExecRaw(Isolate* isolate, Handle<JSRegExp> regexp,
+                             Handle<String> subject, int index, int32_t* output,
+                             int output_size, regulator::fuzz::CoverageTracker *coverage_tracker);
+
+  V8_WARN_UNUSED_RESULT static MaybeHandle<Object> IrregexpExec(
+      Isolate* isolate, Handle<JSRegExp> regexp, Handle<String> subject,
+      int index, Handle<RegExpMatchInfo> last_match_info,
+      regulator::fuzz::CoverageTracker *coverage_tracker);
+  // ------- (end) mod_mcl_2020 -------
+
 
   // Execute an Irregexp bytecode pattern.
   // On a successful match, the result is a JSArray containing
@@ -208,21 +222,35 @@ MaybeHandle<Object> RegExp::Compile(Isolate* isolate, Handle<JSRegExp> re,
   return re;
 }
 
-// static
-MaybeHandle<Object> RegExp::Exec(Isolate* isolate, Handle<JSRegExp> regexp,
-                                 Handle<String> subject, int index,
-                                 Handle<RegExpMatchInfo> last_match_info) {
+// ------- mod_mcl_2020 -------
+MaybeHandle<Object> RegExp::Exec(
+      Isolate* isolate,
+      Handle<JSRegExp> regexp,
+      Handle<String> subject,
+      int index,
+      Handle<RegExpMatchInfo> last_match_info,
+      regulator::fuzz::CoverageTracker *coverage_tracker) {
   switch (regexp->TypeTag()) {
     case JSRegExp::ATOM:
       return RegExpImpl::AtomExec(isolate, regexp, subject, index,
                                   last_match_info);
     case JSRegExp::IRREGEXP: {
       return RegExpImpl::IrregexpExec(isolate, regexp, subject, index,
-                                      last_match_info);
+                                      last_match_info, coverage_tracker);
     }
     default:
       UNREACHABLE();
   }
+}
+// ------- mod_mcl_2020 -------
+
+// static
+MaybeHandle<Object> RegExp::Exec(Isolate* isolate, Handle<JSRegExp> regexp,
+                                 Handle<String> subject, int index,
+                                 Handle<RegExpMatchInfo> last_match_info) {
+  auto coverage_tracker = std::make_unique<regulator::fuzz::CoverageTracker>();
+
+  return RegExp::Exec(isolate, regexp, subject, index, last_match_info, coverage_tracker.get());
 }
 
 // RegExp Atom implementation: Simple string search using indexOf.
@@ -525,9 +553,25 @@ int RegExp::IrregexpPrepare(Isolate* isolate, Handle<JSRegExp> regexp,
   }
 }
 
+// ------- mod_mcl_2020 -------
 int RegExpImpl::IrregexpExecRaw(Isolate* isolate, Handle<JSRegExp> regexp,
                                 Handle<String> subject, int index,
                                 int32_t* output, int output_size) {
+  return RegExpImpl::IrregexpExecRaw(
+    isolate,
+    regexp,
+    subject,
+    index,
+    output,
+    output_size,
+    nullptr
+  );
+}
+
+int RegExpImpl::IrregexpExecRaw(Isolate* isolate, Handle<JSRegExp> regexp,
+                                Handle<String> subject, int index,
+                                int32_t* output, int output_size,
+                                regulator::fuzz::CoverageTracker *coverage_tracker) {
   Handle<FixedArray> irregexp(FixedArray::cast(regexp->data()), isolate);
 
   DCHECK_LE(0, index);
@@ -579,7 +623,7 @@ int RegExpImpl::IrregexpExecRaw(Isolate* isolate, Handle<JSRegExp> regexp,
       IrregexpInterpreter::Result result =
           IrregexpInterpreter::MatchForCallFromRuntime(
               isolate, regexp, subject, raw_output, number_of_capture_registers,
-              index);
+              index, coverage_tracker);
       DCHECK_IMPLIES(result == IrregexpInterpreter::EXCEPTION,
                      isolate->has_pending_exception());
 
@@ -600,7 +644,7 @@ int RegExpImpl::IrregexpExecRaw(Isolate* isolate, Handle<JSRegExp> regexp,
             regexp->ResetLastTierUpTick();
           }
           is_one_byte = String::IsOneByteRepresentationUnderneath(*subject);
-          
+
           EnsureCompiledIrregexp(isolate, regexp, subject, is_one_byte);
           break;
       }
@@ -609,9 +653,22 @@ int RegExpImpl::IrregexpExecRaw(Isolate* isolate, Handle<JSRegExp> regexp,
   }
 }
 
+// ------- mod_mcl_2020 -------
 MaybeHandle<Object> RegExpImpl::IrregexpExec(
     Isolate* isolate, Handle<JSRegExp> regexp, Handle<String> subject,
     int previous_index, Handle<RegExpMatchInfo> last_match_info) {
+
+  auto coverage_tracker = std::make_unique<regulator::fuzz::CoverageTracker>();
+
+  return IrregexpExec(
+    isolate, regexp, subject, previous_index, last_match_info, coverage_tracker.get()
+  );
+}
+
+MaybeHandle<Object> RegExpImpl::IrregexpExec(
+    Isolate* isolate, Handle<JSRegExp> regexp, Handle<String> subject,
+    int previous_index, Handle<RegExpMatchInfo> last_match_info,
+    regulator::fuzz::CoverageTracker *coverage_tracker) {
   DCHECK_EQ(regexp->TypeTag(), JSRegExp::IRREGEXP);
 
   subject = String::Flatten(isolate, subject);
@@ -657,7 +714,7 @@ MaybeHandle<Object> RegExpImpl::IrregexpExec(
 
   int res =
       RegExpImpl::IrregexpExecRaw(isolate, regexp, subject, previous_index,
-                                  output_registers, required_registers);
+                                  output_registers, required_registers, coverage_tracker);
 
   if (res == RegExp::RE_SUCCESS) {
     int capture_count =
@@ -672,6 +729,7 @@ MaybeHandle<Object> RegExpImpl::IrregexpExec(
   DCHECK(res == RegExp::RE_FAILURE);
   return isolate->factory()->null_value();
 }
+// ------- (end) mod_mcl_2020 -------
 
 // static
 Handle<RegExpMatchInfo> RegExp::SetLastMatchInfo(

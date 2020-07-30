@@ -9,6 +9,8 @@
 
 // A simple interpreter for the Irregexp byte code.
 
+#include <memory>
+
 #include "src/regexp/regexp-interpreter.h"
 
 #include "src/ast/ast.h"
@@ -38,13 +40,6 @@
 
 namespace v8 {
 namespace internal {
-
-// ------- mod_mcl_2020 -------
-
-uint64_t regexp_exec_cost = 0;
-regulator::fuzz::CoverageTracker *coverage_tracker = nullptr;
-
-// ------- (end) mod_mcl_2020 -------
 
 namespace {
 
@@ -310,9 +305,9 @@ bool CheckBitInTable(const uint32_t current_char, const byte* const table) {
 // ------- mod_mcl_2020 -------
 #define SET_PC_FROM_OFFSET(offset)  \
   next_pc = code_base + offset;     \
-  v8::internal::coverage_tracker->Cover(reinterpret_cast<uintptr_t>(pc), reinterpret_cast<uintptr_t>(next_pc)); \
+  coverage_tracker->Cover(reinterpret_cast<uintptr_t>(pc), reinterpret_cast<uintptr_t>(next_pc)); \
   DECODE()
-// ------- mod_mcl_2020 -------
+// ------- (end) mod_mcl_2020 -------
 
 #ifdef DEBUG
 #define BYTECODE(name)                                                \
@@ -323,13 +318,19 @@ bool CheckBitInTable(const uint32_t current_char, const byte* const table) {
 #define BYTECODE(name) BC_LABEL(name)
 #endif  // DEBUG
 
+// ------- mod_mcl_2020 -------
+
 template <typename Char>
 IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
                                      String subject_string,
                                      Vector<const Char> subject, int* registers,
                                      int current, uint32_t current_char,
                                      RegExp::CallOrigin call_origin,
-                                     const uint32_t backtrack_limit) {
+                                     const uint32_t backtrack_limit,
+                                     regulator::fuzz::CoverageTracker *coverage_tracker) {
+
+// ------- (end) mod_mcl_2020 -------
+
   DisallowHeapAllocation no_gc;
 
 #if V8_USE_COMPUTED_GOTO
@@ -386,13 +387,6 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
   BacktrackStack backtrack_stack;
 
   uint32_t backtrack_count = 0;
-
-  // ------- mod_mcl_2020 -------
-  v8::internal::regexp_exec_cost = 0;
-  delete v8::internal::coverage_tracker;
-  v8::internal::coverage_tracker = new ::regulator::fuzz::CoverageTracker();
-  // ------- (end) mod_mcl_2020 -------
-
 
 #ifdef DEBUG
   if (FLAG_trace_regexp_bytecodes) {
@@ -521,7 +515,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         // ------- mod_mcl_2020 -------
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_GREEDY);
-        v8::internal::coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -534,7 +528,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         // ------- mod_mcl_2020 -------
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(LOAD_CURRENT_CHAR);
-        v8::internal::coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
         // ------- (end) mod_mcl_2020 -------
         current_char = subject[pos];
       }
@@ -554,7 +548,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         // ------- mod_mcl_2020 -------
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(LOAD_2_CURRENT_CHARS);
-        v8::internal::coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
         // ------- (end) mod_mcl_2020 -------
         Char next = subject[pos + 1];
         current_char = (subject[pos] | (next << (kBitsPerByte * sizeof(Char))));
@@ -577,7 +571,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         // ------- mod_mcl_2020 -------
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(LOAD_4_CURRENT_CHARS);
-        v8::internal::coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
         // ------- (end) mod_mcl_2020 -------
         Char next1 = subject[pos + 1];
         Char next2 = subject[pos + 2];
@@ -606,7 +600,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         // ------- mod_mcl_2020 -------
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_4_CHARS);
-        v8::internal::coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -619,7 +613,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         // ------- mod_mcl_2020 -------
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_CHAR);
-        v8::internal::coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -632,7 +626,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         // ------- mod_mcl_2020 -------
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_NOT_4_CHARS);
-        v8::internal::coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -645,7 +639,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         // ------- mod_mcl_2020 -------
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_NOT_CHAR);
-        v8::internal::coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -658,7 +652,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         // ------- mod_mcl_2020 -------
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(AND_CHECK_4_CHARS);
-        v8::internal::coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -671,7 +665,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         // ------- mod_mcl_2020 -------
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(AND_CHECK_CHAR);
-        v8::internal::coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -684,7 +678,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         // ------- mod_mcl_2020 -------
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(AND_CHECK_NOT_4_CHARS);
-        v8::internal::coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -697,7 +691,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         // ------- mod_mcl_2020 -------
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(AND_CHECK_NOT_CHAR);
-        v8::internal::coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -712,7 +706,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         // ------- mod_mcl_2020 -------
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(MINUS_AND_CHECK_NOT_CHAR);
-        v8::internal::coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -726,7 +720,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         // ------- mod_mcl_2020 -------
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_CHAR_IN_RANGE);
-        v8::internal::coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -740,7 +734,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         // ------- mod_mcl_2020 -------
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_CHAR_NOT_IN_RANGE);
-        v8::internal::coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -752,7 +746,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         // ------- mod_mcl_2020 -------
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_BIT_IN_TABLE);
-        v8::internal::coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -765,7 +759,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         // ------- mod_mcl_2020 -------
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_LT);
-        v8::internal::coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -778,7 +772,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         // ------- mod_mcl_2020 -------
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_GT);
-        v8::internal::coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -790,7 +784,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         // ------- mod_mcl_2020 -------
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_REGISTER_LT);
-        v8::internal::coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -802,7 +796,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         // ------- mod_mcl_2020 -------
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_REGISTER_GE);
-        v8::internal::coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -814,7 +808,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         // ------- mod_mcl_2020 -------
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_REGISTER_EQ_POS);
-        v8::internal::coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -825,7 +819,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         // ------- mod_mcl_2020 -------
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_NOT_REGS_EQUAL);
-        v8::internal::coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
         // ------- (end) mod_mcl_2020 -------
       } else {
         SET_PC_FROM_OFFSET(Load32Aligned(pc + 8));
@@ -836,9 +830,9 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       int from = registers[insn >> BYTECODE_SHIFT];
       int len = registers[(insn >> BYTECODE_SHIFT) + 1] - from;
       if (from >= 0 && len > 0) {
-        uint64_t nchars = 0;
+        uint64_t __tmp_ = 0; // todo remove this
         if (current + len > subject.length() ||
-            CompareChars2(&subject[from], &subject[current], len != 0, v8::internal::regexp_exec_cost)) { // ------- mod_mcl_2020 -------
+            CompareChars2(&subject[from], &subject[current], len != 0, __tmp_)) { // ------- mod_mcl_2020 -------
           SET_PC_FROM_OFFSET(Load32Aligned(pc + 4));
           DISPATCH();
         }
@@ -847,7 +841,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       // ------- mod_mcl_2020 -------
       uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
       ADVANCE(CHECK_NOT_BACK_REF);
-      v8::internal::coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+      coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
       // ------- (end) mod_mcl_2020 -------
       DISPATCH();
     }
@@ -855,8 +849,9 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       int from = registers[insn >> BYTECODE_SHIFT];
       int len = registers[(insn >> BYTECODE_SHIFT) + 1] - from;
       if (from >= 0 && len > 0) {
+        uint64_t __tmp_ = 0; // todo remove this
         if (current - len < 0 ||
-            CompareChars2(&subject[from], &subject[current - len], len, v8::internal::regexp_exec_cost) != 0) { // ------- mod_mcl_2020 -------
+            CompareChars2(&subject[from], &subject[current - len], len, __tmp_) != 0) { // ------- mod_mcl_2020 -------
           SET_PC_FROM_OFFSET(Load32Aligned(pc + 4));
           DISPATCH();
         }
@@ -865,7 +860,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       // ------- mod_mcl_2020 -------
       uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
       ADVANCE(CHECK_NOT_BACK_REF_BACKWARD);
-      v8::internal::coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+      coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
       // ------- (end) mod_mcl_2020 -------
       DISPATCH();
     }
@@ -886,7 +881,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       // ------- mod_mcl_2020 -------
       uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
       ADVANCE(CHECK_NOT_BACK_REF_NO_CASE);
-      v8::internal::coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+      coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
       // ------- (end) mod_mcl_2020 -------
       DISPATCH();
     }
@@ -907,7 +902,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       // ------- mod_mcl_2020 -------
       uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
       ADVANCE(CHECK_NOT_BACK_REF_NO_CASE_BACKWARD);
-      v8::internal::coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+      coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
       // ------- (end) mod_mcl_2020 -------
       DISPATCH();
     }
@@ -918,7 +913,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         // ------- mod_mcl_2020 -------
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_AT_START);
-        v8::internal::coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -928,7 +923,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         // ------- mod_mcl_2020 -------
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_NOT_AT_START);
-        v8::internal::coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
         // ------- (end) mod_mcl_2020 -------
       } else {
         SET_PC_FROM_OFFSET(Load32Aligned(pc + 4));
@@ -952,7 +947,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         // ------- mod_mcl_2020 -------
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_CURRENT_POSITION);
-        v8::internal::coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -968,7 +963,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
           SET_PC_FROM_OFFSET(Load32Aligned(pc + 8));
           DISPATCH();
         }
-        v8::internal::coverage_tracker->Cover(reinterpret_cast<uintptr_t>(pc)); // ------- mod_mcl_2020 -------
+        coverage_tracker->Cover(reinterpret_cast<uintptr_t>(pc)); // ------- mod_mcl_2020 -------
         current += advance;
       }
       SET_PC_FROM_OFFSET(Load32Aligned(pc + 12));
@@ -987,7 +982,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
           SET_PC_FROM_OFFSET(Load32Aligned(pc + 16));
           DISPATCH();
         }
-        v8::internal::coverage_tracker->Cover(reinterpret_cast<uintptr_t>(pc)); // ------- mod_mcl_2020 -------
+        coverage_tracker->Cover(reinterpret_cast<uintptr_t>(pc)); // ------- mod_mcl_2020 -------
         current += advance;
       }
       SET_PC_FROM_OFFSET(Load32Aligned(pc + 20));
@@ -1005,7 +1000,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
           SET_PC_FROM_OFFSET(Load32Aligned(pc + 12));
           DISPATCH();
         }
-        v8::internal::coverage_tracker->Cover(reinterpret_cast<uintptr_t>(pc)); // ------- mod_mcl_2020 -------
+        coverage_tracker->Cover(reinterpret_cast<uintptr_t>(pc)); // ------- mod_mcl_2020 -------
         current += advance;
       }
       SET_PC_FROM_OFFSET(Load32Aligned(pc + 16));
@@ -1022,7 +1017,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
           SET_PC_FROM_OFFSET(Load32Aligned(pc + 24));
           DISPATCH();
         }
-        v8::internal::coverage_tracker->Cover(reinterpret_cast<uintptr_t>(pc)); // ------- mod_mcl_2020 -------
+        coverage_tracker->Cover(reinterpret_cast<uintptr_t>(pc)); // ------- mod_mcl_2020 -------
         current += advance;
       }
       SET_PC_FROM_OFFSET(Load32Aligned(pc + 28));
@@ -1044,7 +1039,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
           SET_PC_FROM_OFFSET(Load32Aligned(pc + 24));
           DISPATCH();
         }
-        v8::internal::coverage_tracker->Cover(reinterpret_cast<uintptr_t>(pc)); // ------- mod_mcl_2020 -------
+        coverage_tracker->Cover(reinterpret_cast<uintptr_t>(pc)); // ------- mod_mcl_2020 -------
         current += advance;
       }
       SET_PC_FROM_OFFSET(Load32Aligned(pc + 28));
@@ -1069,7 +1064,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
           SET_PC_FROM_OFFSET(Load32Aligned(pc + 12));
           DISPATCH();
         }
-        v8::internal::coverage_tracker->Cover(reinterpret_cast<uintptr_t>(pc)); // ------- mod_mcl_2020 -------
+        coverage_tracker->Cover(reinterpret_cast<uintptr_t>(pc)); // ------- mod_mcl_2020 -------
         current += advance;
       }
       SET_PC_FROM_OFFSET(Load32Aligned(pc + 16));
@@ -1097,12 +1092,55 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
 #undef BC_LABEL
 #undef V8_USE_COMPUTED_GOTO
 
+template <typename Char>
+IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
+                                     String subject_string,
+                                     Vector<const Char> subject, int* registers,
+                                     int current, uint32_t current_char,
+                                     RegExp::CallOrigin call_origin,
+                                     const uint32_t backtrack_limit) {
+
+  auto coverage_tracker = std::make_unique<regulator::fuzz::CoverageTracker>();
+
+  return RawMatch(
+    isolate,
+    code_array,
+    subject_string,
+    subject,
+    registers,
+    current,
+    current_char,
+    call_origin,
+    backtrack_limit,
+    coverage_tracker.get()
+  );
+}
+
 }  // namespace
 
 // static
+
+// ------- mod_mcl_2020 -------
+
 IrregexpInterpreter::Result IrregexpInterpreter::Match(
     Isolate* isolate, JSRegExp regexp, String subject_string, int* registers,
     int registers_length, int start_position, RegExp::CallOrigin call_origin) {
+  return Match(
+    isolate,
+    regexp,
+    subject_string,
+    registers,
+    registers_length,
+    start_position,
+    call_origin,
+    nullptr
+  );
+}
+
+IrregexpInterpreter::Result IrregexpInterpreter::Match(
+    Isolate* isolate, JSRegExp regexp, String subject_string, int* registers,
+    int registers_length, int start_position, RegExp::CallOrigin call_origin,
+    regulator::fuzz::CoverageTracker *coverage_tracker) {
   if (FLAG_regexp_tier_up) {
     regexp.TierUpTick();
   }
@@ -1112,13 +1150,35 @@ IrregexpInterpreter::Result IrregexpInterpreter::Match(
 
   return MatchInternal(isolate, code_array, subject_string, registers,
                        registers_length, start_position, call_origin,
-                       regexp.BacktrackLimit());
+                       regexp.BacktrackLimit(),
+                       coverage_tracker);
 }
 
 IrregexpInterpreter::Result IrregexpInterpreter::MatchInternal(
     Isolate* isolate, ByteArray code_array, String subject_string,
     int* registers, int registers_length, int start_position,
     RegExp::CallOrigin call_origin, uint32_t backtrack_limit) {
+  return MatchInternal(
+    isolate,
+    code_array,
+    subject_string,
+    registers,
+    registers_length,
+    start_position,
+    call_origin,
+    backtrack_limit,
+    nullptr
+  );
+}
+
+IrregexpInterpreter::Result IrregexpInterpreter::MatchInternal(
+    Isolate* isolate, ByteArray code_array, String subject_string,
+    int* registers, int registers_length, int start_position,
+    RegExp::CallOrigin call_origin, uint32_t backtrack_limit,
+    regulator::fuzz::CoverageTracker *coverage_tracker) {
+
+// ------- (end) mod_mcl_2020 -------
+
   DCHECK(subject_string.IsFlat());
 
   // Note: Heap allocation *is* allowed in two situations if calling from
@@ -1142,14 +1202,14 @@ IrregexpInterpreter::Result IrregexpInterpreter::MatchInternal(
     if (start_position != 0) previous_char = subject_vector[start_position - 1];
     return RawMatch(isolate, code_array, subject_string, subject_vector,
                     registers, start_position, previous_char, call_origin,
-                    backtrack_limit);
+                    backtrack_limit, coverage_tracker);
   } else {
     DCHECK(subject_content.IsTwoByte());
     Vector<const uc16> subject_vector = subject_content.ToUC16Vector();
     if (start_position != 0) previous_char = subject_vector[start_position - 1];
     return RawMatch(isolate, code_array, subject_string, subject_vector,
                     registers, start_position, previous_char, call_origin,
-                    backtrack_limit);
+                    backtrack_limit, coverage_tracker);
   }
 }
 
@@ -1204,12 +1264,30 @@ IrregexpInterpreter::Result IrregexpInterpreter::MatchForCallFromJs(
 
 #endif  // !COMPILING_IRREGEXP_FOR_EXTERNAL_EMBEDDER
 
+// ------- mod_mcl_2020 -------
 IrregexpInterpreter::Result IrregexpInterpreter::MatchForCallFromRuntime(
     Isolate* isolate, Handle<JSRegExp> regexp, Handle<String> subject_string,
     int* registers, int registers_length, int start_position) {
-  return Match(isolate, *regexp, *subject_string, registers, registers_length,
-               start_position, RegExp::CallOrigin::kFromRuntime);
+  
+  return MatchForCallFromRuntime(
+    isolate,
+    regexp,
+    subject_string,
+    registers,
+    registers_length,
+    start_position,
+    nullptr
+  );
 }
+
+IrregexpInterpreter::Result IrregexpInterpreter::MatchForCallFromRuntime(
+    Isolate* isolate, Handle<JSRegExp> regexp, Handle<String> subject_string,
+    int* registers, int registers_length, int start_position,
+    regulator::fuzz::CoverageTracker *coverage_tracker) {
+  return Match(isolate, *regexp, *subject_string, registers, registers_length,
+               start_position, RegExp::CallOrigin::kFromRuntime, coverage_tracker);
+}
+// ------- (end) mod_mcl_2020 -------
 
 }  // namespace internal
 }  // namespace v8
