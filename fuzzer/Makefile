@@ -47,6 +47,7 @@ INCLUDES += -Ideps/v8
 INCLUDES += -Ideps/v8/include
 INCLUDES += -Ideps/murmurhash
 INCLUDES += -Ideps/cxxopts
+INCLUDES += -Ideps/v8/third_party/icu/source/common
 
 CPPFLAGS=-g -pthread -rdynamic -m64 ${DEFINES} ${INCLUDES}
 
@@ -90,14 +91,14 @@ test: $(BUILDDIR)tests
 
 .PHONY: copy_headers
 copy_headers: node
-	./copy_headers.py $(BUILDDIR)/node
+	./copy_headers.py $(BUILDDIR)node
 
 #
 # Procedures to checkout & make nodejs
 #
 
 .PHONY: node
-node: $(BUILDDIR)/node/out/Debug/node
+node: $(BUILDDIR)node/out/Debug/node
 
 
 $(BUILDDIR)node/out/Debug/node: $(BUILDDIR)node/config.gypi
@@ -108,8 +109,9 @@ $(BUILDDIR)node/config.gypi: $(BUILDDIR)node/.git
 	cd $(BUILDDIR)node; git checkout ${NODE_COMMIT}; ./configure --debug
 
 
-$(BUILDDIR)node/.git: $(BUILDDIR)
-	cd build; git clone https://github.com/nodejs/node.git
+$(BUILDDIR)node/.git:
+	mkdir -p $(BUILDDIR)
+	cd $(BUILDDIR); git clone https://github.com/nodejs/node.git
 
 
 FUZZER_DEPS_CPPS:=$(shell find src -type f -name "*.cpp")
@@ -117,7 +119,7 @@ FUZZER_DEPS_OS:=$(patsubst src/%.cpp, $(BUILDDIR)objects/%.o, $(FUZZER_DEPS_CPPS
 
 FUZZER_DEPS_OS += $(BUILDDIR)murmurhash.o
 
-$(BUILDDIR)fuzzer: $(BUILDDIR)/node/out/Debug/node ${FUZZER_DEPS_OS} ${V8_DEPS} $(BUILDDIR)libv8_base_without_compiler.a
+$(BUILDDIR)fuzzer: $(BUILDDIR)node/out/Debug/node ${FUZZER_DEPS_OS} ${V8_DEPS} $(BUILDDIR)libv8_base_without_compiler.a
 	mkdir -p build
 	$(CXX) -o $@ ${CPPFLAGS} -Wl,--start-group ${FUZZER_DEPS_OS} -Wl,--end-group -Wl,--start-group ${V8_DEPS} -Wl,--end-group ${LDFLAGS}
 
@@ -153,7 +155,7 @@ $(BUILDDIR)regexp-interpreter.o: mod/src/regexp/regexp-interpreter.cc mod/src/re
 
 
 $(BUILDDIR)regexp-macro-assembler.o: mod/src/regexp/regexp-macro-assembler.cc mod/src/regexp/regexp-macro-assembler.h
-	$(CXX) -g -c '-DV8_EMBEDDED_BUILTINS' '-DV8_GYP_BUILD' '-DV8_TYPED_ARRAY_MAX_SIZE_IN_HEAP=64' '-D__STDC_FORMAT_MACROS' '-DOPENSSL_NO_PINSHARED' '-DOPENSSL_THREADS' '-DV8_TARGET_ARCH_X64' '-DV8_EMBEDDER_STRING="-node.19"' '-DENABLE_DISASSEMBLER' '-DV8_PROMISE_INTERNAL_FIELD_COUNT=1' '-DENABLE_MINOR_MC' '-DV8_INTL_SUPPORT' '-DV8_CONCURRENT_MARKING' '-DV8_ARRAY_BUFFER_EXTENSION' '-DV8_ENABLE_LAZY_SOURCE_POSITIONS' '-DV8_USE_SIPHASH' '-DDISABLE_UNTRUSTED_CODE_MITIGATIONS' '-DV8_WIN64_UNWINDING_INFO' '-DV8_ENABLE_REGEXP_INTERPRETER_THREADED_DISPATCH' '-DV8_SNAPSHOT_COMPRESSION' '-DICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_STATIC' '-DUCONFIG_NO_SERVICE=1' '-DU_ENABLE_DYLOAD=0' '-DU_STATIC_IMPLEMENTATION=1' '-DU_HAVE_STD_STRING=1' '-DUCONFIG_NO_BREAK_ITERATION=0' '-DDEBUG' '-D_DEBUG' '-DV8_ENABLE_CHECKS' '-DOBJECT_PRINT' '-DVERIFY_HEAP' '-DV8_TRACE_MAPS' '-DV8_ENABLE_ALLOCATION_TIMEOUT' '-DV8_ENABLE_FORCE_SLOW_PATH' '-DENABLE_HANDLE_ZAPPING' -Imod -Ideps/v8 -I$(BUILDDIR)node/deps/icu-small/source/common -o $@ mod/src/regexp/regexp-macro-assembler.cc
+	$(CXX) -g -c '-DV8_EMBEDDED_BUILTINS' '-DV8_GYP_BUILD' '-DV8_TYPED_ARRAY_MAX_SIZE_IN_HEAP=64' '-D__STDC_FORMAT_MACROS' '-DOPENSSL_NO_PINSHARED' '-DOPENSSL_THREADS' '-DV8_TARGET_ARCH_X64' '-DV8_EMBEDDER_STRING="-node.19"' '-DENABLE_DISASSEMBLER' '-DV8_PROMISE_INTERNAL_FIELD_COUNT=1' '-DENABLE_MINOR_MC' '-DV8_INTL_SUPPORT' '-DV8_CONCURRENT_MARKING' '-DV8_ARRAY_BUFFER_EXTENSION' '-DV8_ENABLE_LAZY_SOURCE_POSITIONS' '-DV8_USE_SIPHASH' '-DDISABLE_UNTRUSTED_CODE_MITIGATIONS' '-DV8_WIN64_UNWINDING_INFO' '-DV8_ENABLE_REGEXP_INTERPRETER_THREADED_DISPATCH' '-DV8_SNAPSHOT_COMPRESSION' '-DICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_STATIC' '-DUCONFIG_NO_SERVICE=1' '-DU_ENABLE_DYLOAD=0' '-DU_STATIC_IMPLEMENTATION=1' '-DU_HAVE_STD_STRING=1' '-DUCONFIG_NO_BREAK_ITERATION=0' '-DDEBUG' '-D_DEBUG' '-DV8_ENABLE_CHECKS' '-DOBJECT_PRINT' '-DVERIFY_HEAP' '-DV8_TRACE_MAPS' '-DV8_ENABLE_ALLOCATION_TIMEOUT' '-DV8_ENABLE_FORCE_SLOW_PATH' '-DENABLE_HANDLE_ZAPPING' -Isrc -Imod -Ideps/v8 -I$(BUILDDIR)node/deps/icu-small/source/common -o $@ mod/src/regexp/regexp-macro-assembler.cc
 
 
 $(BUILDDIR)regexp.o: mod/src/regexp/regexp.cc mod/src/regexp/regexp.h
