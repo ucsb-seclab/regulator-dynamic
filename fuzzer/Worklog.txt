@@ -1,0 +1,11 @@
+Regulator: Work Log
+===================
+
+Modifications & future thoughts in a time-based log.
+
+
+
+Monday, Aug 10th 2020 - Robert McLaughlin (<robert349@ucsb.edu>)
+
+    * Add more documentation to coverage-tracker.hpp
+

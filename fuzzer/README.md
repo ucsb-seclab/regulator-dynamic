@@ -48,3 +48,35 @@ Here are the results for that example:
 
 
 <img src="example_fuzz_graph_output.png" alt="Fuzzing progress line graph" width=500px />
+
+
+## Architecture Overview
+
+
+```
+  +-------------+ invokes  +---------------------+
+  | fuzz-driver |--------->| regexp-executor.cpp |
+  +-------------+          +---------------------+
+    |                       ^
+    | creates & fills       | executes, reports coverage
+    v                       v
+  +--------+               +------------------+
+  | Corpus |               | V8 RegExp Engine |
+  +--------+               +------------------+
+    |
+    | has many
+    v
+  +-------------+
+  | CorpusEntry |
+  +-------------+
+    |
+    | has one
+    v
+  +-----------------+
+  | CoverageTracker |
+  +-----------------+
+```
+
+Some notes:
+* Mutation takes place within Corpus
+* Any modifications to underlying node/v8 source are found in `mod/`.

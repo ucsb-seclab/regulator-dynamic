@@ -1,6 +1,28 @@
 // coverage-tracker.hpp
 //
-// contains an AFL-style code coverage tracker
+// Author: Robert McLaughlin <robert349@ucsb.edu>
+//
+// Contains a code coverage tracker inspired by
+// American Fuzzy Lop (AFL).
+//
+// This coverage tracker maintains an array of
+// unsigned integers, traditionally called the
+// "coverage map".
+//
+// The regular expression engine is instrumented
+// such that upon execution of an instruction
+// which has two or more successors, the engine
+// calls CoverageTracker::Cover(src, dst), where
+// `src` is the address of the branching statement,
+// and `dst` is the address of the chosen successor.
+//
+// AFL also "bucketizes" the coverage map's cells,
+// so that small variations in iteration count of
+// loops don't throw off the generational heuristics.
+// Calling CoverageTracker::Bucketize() will in-place
+// modify the coverage map to replicate this behavior.
+//
+//
 
 #pragma once
 
