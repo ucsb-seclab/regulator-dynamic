@@ -187,7 +187,7 @@ inline void work_interrupt(exec_context &ctx)
                 / static_cast<double>(std::nano::den);
             seconds_econo += ctx.campaign_one_byte->econo_dur.count()
                 / static_cast<double>(std::nano::den);
-            
+
             ctx.campaign_one_byte->gen_child_dur =
                 ctx.campaign_one_byte->exec_dur =
                 ctx.campaign_one_byte->econo_dur =
@@ -202,7 +202,7 @@ inline void work_interrupt(exec_context &ctx)
                 / static_cast<double>(std::nano::den);
             seconds_econo += ctx.campaign_two_byte->econo_dur.count()
                 / static_cast<double>(std::nano::den);
-            
+
             ctx.campaign_two_byte->gen_child_dur =
                 ctx.campaign_two_byte->exec_dur =
                 ctx.campaign_two_byte->econo_dur =
@@ -305,14 +305,12 @@ inline bool seed_corpus(
     CorpusEntry<Char> *entry = new CorpusEntry<Char>(
         baseline,
         strlen,
-        new CoverageTracker(*result.coverage_tracker)
+        new CoverageTracker(*result.coverage_tracker.get())
     );
-
-    // this will be deleted later
-    result.coverage_tracker = nullptr;
 
     corpus->Record(entry);
     corpus->FlushGeneration();
+
     return true;
 }
 
@@ -395,7 +393,7 @@ inline void work_on_corpus(
     regulator::executor::V8RegExp *regexp,
     size_t &strlen,
     FuzzCampaign<Char> *campaign)
-{    
+{
     regulator::executor::V8RegExpResult result;
     std::vector<Char *> children_to_eval;
 
@@ -415,7 +413,7 @@ inline void work_on_corpus(
 #endif
 
             campaign->num_generations++;
-            
+
             campaign->work_queue->Fill(campaign->corpus);
         }
 
@@ -492,7 +490,7 @@ uint64_t Fuzz(
     if (fuzz_two_byte)
     {
         context.campaign_two_byte = std::make_unique<FuzzCampaign<uint16_t>>();
-        
+
         if (!seed_corpus(context.campaign_two_byte->corpus, regexp, strlen))
         {
             return 0;

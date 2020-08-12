@@ -18,33 +18,23 @@ namespace fuzz
 
 CoverageTracker::CoverageTracker()
 {
-    this->path_hash = 0;
-    this->total = 0;
     this->covmap = new cov_t[MAP_SIZE];
     this->Clear();
-    this->_deleted = false;
-    this->last_cursor_pos = SIZE_MAX;
 }
 
 
 CoverageTracker::CoverageTracker(const CoverageTracker &other)
 {
-    this->total = other.total;
     this->covmap = new cov_t[MAP_SIZE];
     memcpy(this->covmap, other.covmap, MAP_SIZE * sizeof(cov_t));
+    this->total = other.total;
     this->path_hash = other.path_hash;
-    this->_deleted = false;
-    this->last_cursor_pos = SIZE_MAX;
+    this->last_cursor_pos = other.last_cursor_pos;
 }
 
 
 CoverageTracker::~CoverageTracker()
 {
-    if (this->_deleted)
-    {
-        std::cout << "DOUBLE FREE CoverageTracker" << std::endl;
-    }
-    this->_deleted = true;
     delete[] this->covmap;
 }
 
@@ -99,8 +89,10 @@ uint64_t CoverageTracker::Total()
 
 void CoverageTracker::Clear()
 {
-    memset(this->covmap, 0, MAP_SIZE * sizeof(cov_t));
+    this->last_cursor_pos = SIZE_MAX;
+    this->path_hash = 0;
     this->total = 0;
+    memset(this->covmap, 0, MAP_SIZE * sizeof(cov_t));
 }
 
 /**
