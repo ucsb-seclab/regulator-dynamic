@@ -27,7 +27,7 @@ TEST_CASE( "Should be able to match, simple case" ) {
         &regexp,
         reinterpret_cast<const uint8_t *>(subject.c_str()),
         3,
-        &exec_result
+        exec_result
     );
 
     REQUIRE( exec_result_status == e::kSuccess );
@@ -52,7 +52,7 @@ TEST_CASE( "Should be able to no-match, simple case" ) {
         &regexp,
         reinterpret_cast<const uint8_t *>(subject.c_str()),
         3,
-        &exec_result
+        exec_result
     );
 
     REQUIRE( exec_result_status == e::kSuccess );
@@ -77,10 +77,9 @@ TEST_CASE( "opcount should increase as match generally increases" ) {
         &regexp,
         reinterpret_cast<const uint8_t *>(subject.c_str()),
         3,
-        &exec_result1
+        exec_result1
     );
     size_t ops_1 = exec_result1.coverage_tracker->Total();
-    exec_result1.coverage_tracker = nullptr;
 
     REQUIRE( exec_result_status == e::kSuccess );
 
@@ -90,7 +89,7 @@ TEST_CASE( "opcount should increase as match generally increases" ) {
         &regexp,
         reinterpret_cast<const uint8_t *>(subject2.c_str()),
         subject2.size(),
-        &exec_result2
+        exec_result2
     );
 
     REQUIRE( exec_result_status == e::kSuccess );
@@ -132,26 +131,24 @@ TEST_CASE( "can execute against 16-bit strings" )
         &regexp,
         negative_subject,
         4,
-        &exec_result,
+        exec_result,
         e::kOnlyTwoByte
     );
 
     REQUIRE( exec_result_status == e::kSuccess );
     REQUIRE( exec_result.match_success == false );
-    REQUIRE( exec_result.coverage_tracker != nullptr );
 
     regulator::fuzz::CoverageTracker old_covtrack(*exec_result.coverage_tracker);
-    exec_result.coverage_tracker = nullptr;
 
     exec_result_status = e::Exec(
         &regexp,
         positive_subject,
         4,
-        &exec_result,
+        exec_result,
         e::kOnlyTwoByte
     );
 
     REQUIRE( exec_result_status == e::kSuccess );
     REQUIRE( exec_result.match_success == true );
-    REQUIRE( old_covtrack.HasNewPath(exec_result.coverage_tracker) );
+    REQUIRE( old_covtrack.HasNewPath(exec_result.coverage_tracker.get()) );
 }

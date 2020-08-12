@@ -47,16 +47,12 @@ V8RegExp::V8RegExp()
 V8RegExpResult::V8RegExpResult()
 {
     this->match_success = false;
-    this->coverage_tracker = nullptr;
+    this->coverage_tracker = std::make_unique<regulator::fuzz::CoverageTracker>();
 }
 
 
 V8RegExpResult::~V8RegExpResult()
 {
-    if (this->coverage_tracker != nullptr)
-    {
-        delete this->coverage_tracker;
-    }
 }
 
 
@@ -191,7 +187,7 @@ Result Exec(
     V8RegExp *regexp,
     const Char *subject,
     size_t subject_len,
-    V8RegExpResult *out,
+    V8RegExpResult &out,
     EnforceRepresentation rep)
 {
     // Following set-up seen at v8 file fuzzer/regexp.cc
@@ -230,24 +226,23 @@ Result Exec(
         }
     }
 
-    out->rep_used = kRepOneByte;
+    out.rep_used = kRepOneByte;
     if (h_subject->IsTwoByteRepresentation())
     {
-        out->rep_used = kRepTwoByte;
+        out.rep_used = kRepTwoByte;
     }
 
     int capture_count = regexp->regexp->CaptureCount();
     v8::internal::Handle<v8::internal::RegExpMatchInfo> match_info = i_isolate->factory()->NewRegExpMatchInfo();
 
-    regulator::fuzz::CoverageTracker *coverage_tracker = new regulator::fuzz::CoverageTracker();
-
+    out.coverage_tracker->Clear();
     v8::internal::Handle<v8::internal::Object> o2 = v8::internal::RegExp::Exec(
         i_isolate,
         regexp->regexp,
         h_subject,
         0,
         match_info,
-        coverage_tracker
+        out.coverage_tracker.get()
     ).ToHandleChecked();
 
 
@@ -256,9 +251,8 @@ Result Exec(
         std::cerr << "Pending exception!!!" << std::endl;
     }
 
-    out->match_success = !(o2->IsNull());
-    out->coverage_tracker = coverage_tracker;
-    out->coverage_tracker->Bucketize();
+    out.match_success = !(o2->IsNull());
+    out.coverage_tracker->Bucketize();
 
     uint64_t pumps = 0;
     while (v8::platform::PumpMessageLoop(platform.get(), isolate))
@@ -278,7 +272,7 @@ Result Exec<uint8_t>(
     V8RegExp *regexp,
     const uint8_t *subject,
     size_t subject_len,
-    V8RegExpResult *out,
+    V8RegExpResult &out,
     EnforceRepresentation rep);
 
 template
@@ -286,7 +280,7 @@ Result Exec<uint16_t>(
     V8RegExp *regexp,
     const uint16_t *subject,
     size_t subject_len,
-    V8RegExpResult *out,
+    V8RegExpResult &out,
     EnforceRepresentation rep);
 
 }

@@ -218,15 +218,14 @@ bool Corpus<Char>::IsRedundant(CoverageTracker *coverage_tracker) const
 
 template<typename Char>
 void Corpus<Char>::GenerateChildren(
-    Char *parent,
-    size_t parent_len,
+    const CorpusEntry<Char> *parent,
     size_t n_children,
     std::vector<Char *> &out
 )
 {
     // NOTE: each child is a mutation OF THE PREVIOUS GENERATED CHILD
-    Char *last_buf = parent;
-    size_t buflen = parent_len;
+    const Char *last_buf = parent->buf;
+    size_t buflen = parent->buflen;
 
     for (size_t i = 0; i < n_children; i++)
     {
@@ -238,15 +237,15 @@ void Corpus<Char>::GenerateChildren(
         switch (random() % 16)
         {
         case 0:
-            mutate_random_char(newbuf, buflen);
+            mutate_random_char(newbuf, buflen, parent->coverage_tracker->FinalCursorPosition());
             break;
         case 1:
         case 2:
-            arith_random_char(newbuf, buflen);
+            arith_random_char(newbuf, buflen, parent->coverage_tracker->FinalCursorPosition());
             break;
         case 3:
         case 4:
-            swap_random_char(newbuf, buflen);
+            swap_random_char(newbuf, buflen, parent->coverage_tracker->FinalCursorPosition());
             break;
             // bit_flip(newbuf, buflen);
             // break;
@@ -262,7 +261,7 @@ void Corpus<Char>::GenerateChildren(
         case 11:
         case 12:
         case 13:
-            replace_with_special(newbuf, buflen, *this->extra_interesting);
+            replace_with_special(newbuf, buflen, *this->extra_interesting, parent->coverage_tracker->FinalCursorPosition());
             break;
         case 5:
         case 14:

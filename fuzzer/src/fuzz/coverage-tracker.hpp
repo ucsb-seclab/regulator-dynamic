@@ -22,7 +22,6 @@
 // Calling CoverageTracker::Bucketize() will in-place
 // modify the coverage map to replicate this behavior.
 //
-//
 
 #pragma once
 
@@ -93,17 +92,20 @@ public:
      */
     uint64_t Total();
 
+
     /**
      * Add coverage path info from `other` into this coverage
      * tracker.
      */
     void Union(CoverageTracker *other);
 
+
     /**
      * Returns true if `other` contains any branch transitions
      * not found in `this`.
      */
     bool HasNewPath(CoverageTracker *other);
+
 
     /**
      * Returns true if `other` contains any branch transitions
@@ -112,11 +114,13 @@ public:
      */
     bool MaximizesAnyEdge(CoverageTracker *other) const;
 
+
     /**
      * Returns true if the edge `edge_id` has the same value
      * in both `this` and `other`.
      */
     bool EdgeIsEqual(CoverageTracker *other, size_t edge_id) const;
+
 
     /**
      * Returns true if the edge `edge_id` has explicitly more
@@ -124,11 +128,13 @@ public:
      */
     bool EdgeIsGreater(CoverageTracker *other, size_t edge_id) const;
 
+
     /**
      * Returns true if the edge `edge_id` was covered in `this`
      * (ie has non-zero execution count).
      */
     bool EdgeIsCovered(size_t edge_id) const;
+
 
     /**
      * Simplifies the byte-map by putting each execution count
@@ -146,10 +152,12 @@ public:
      */
     void Bucketize();
 
+
     /**
      * Resets tracker
      */
     void Clear();
+
 
     /**
      * Returns true if `other` has the same path hash as this
@@ -159,6 +167,7 @@ public:
         return this->path_hash == other->path_hash;
     };
 
+
     /**
      * Gets the path hash
      */
@@ -167,11 +176,13 @@ public:
         return this->path_hash;
     };
 
+
     /**
      * Gets the number of bytes this object and its members
      * occupy in RAM.
      */
     size_t MemoryFootprint() const;
+
 
     /**
      * Gets the percentage of slots which are non-zero.
@@ -180,9 +191,23 @@ public:
      */
     double Residency() const;
 
+
+    /**
+     * Gets the index into the subject string at which
+     * the regular expression engine terminated.
+     */
+    size_t FinalCursorPosition() const;
+
+    /**
+     * Sets the index into the subject string which
+     * the regular expression engine terminated at.
+     */
+    void RecordFinalCursorPosition(size_t pos);
+
 private:
     cov_t *covmap;
     uint64_t total;
+    size_t last_cursor_pos;
     path_hash_t path_hash;
     bool _deleted;
 };

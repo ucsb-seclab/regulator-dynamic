@@ -37,12 +37,9 @@ bool ExtractInteresting(
         &regexp,
         subject,
         sizeof(subject) / sizeof(Char),
-        &exec_result,
+        exec_result,
         sizeof(Char) == 1 ? e::kOnlyOneByte : e::kOnlyTwoByte
     );
-
-    // avoid double-free (sadly)
-    exec_result.coverage_tracker = nullptr;
 
     if (result != e::kSuccess)
     {

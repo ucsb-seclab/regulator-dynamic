@@ -5,7 +5,7 @@
 //
 // Portions of this file Copyright 2020 Robert McLaughlin <robert349@ucsb.edu>,
 //   demarcated by ------- mod_mcl_2020 -------
-// 
+//
 
 // A simple interpreter for the Irregexp byte code.
 
@@ -393,7 +393,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
     PrintF("\n\nStart bytecode interpreter\n\n");
   }
 #endif
-  
+
   while (true) {
     const byte* next_pc = pc;
     int32_t insn;
@@ -467,6 +467,11 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       STATIC_ASSERT(JSRegExp::kNoBacktrackLimit == 0);
       if (++backtrack_count == backtrack_limit) {
         // Exceeded limits are treated as a failed match.
+
+        // ------- mod_mcl_2020 -------
+        coverage_tracker->RecordFinalCursorPosition(current);
+        // ------- mod_mcl_2020 -------
+
         return IrregexpInterpreter::FAILURE;
       }
 
@@ -486,11 +491,17 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
     BYTECODE(FAIL) {
       isolate->counters()->regexp_backtracks()->AddSample(
           static_cast<int>(backtrack_count));
+      // ------- mod_mcl_2020 -------
+      coverage_tracker->RecordFinalCursorPosition(current);
+      // ------- mod_mcl_2020 -------
       return IrregexpInterpreter::FAILURE;
     }
     BYTECODE(SUCCEED) {
       isolate->counters()->regexp_backtracks()->AddSample(
           static_cast<int>(backtrack_count));
+      // ------- mod_mcl_2020 -------
+      coverage_tracker->RecordFinalCursorPosition(current);
+      // ------- mod_mcl_2020 -------
       return IrregexpInterpreter::SUCCESS;
     }
     BYTECODE(ADVANCE_CP) {
@@ -1268,7 +1279,7 @@ IrregexpInterpreter::Result IrregexpInterpreter::MatchForCallFromJs(
 IrregexpInterpreter::Result IrregexpInterpreter::MatchForCallFromRuntime(
     Isolate* isolate, Handle<JSRegExp> regexp, Handle<String> subject_string,
     int* registers, int registers_length, int start_position) {
-  
+
   return MatchForCallFromRuntime(
     isolate,
     regexp,

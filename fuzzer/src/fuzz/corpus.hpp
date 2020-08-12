@@ -91,8 +91,7 @@ public:
      * Generate children from the given parent byte pattern.
      */
     void GenerateChildren(
-        Char *parent,
-        size_t parent_len,
+        const CorpusEntry<Char> *parent,
         size_t n_children,
         std::vector<Char *> &out
     );

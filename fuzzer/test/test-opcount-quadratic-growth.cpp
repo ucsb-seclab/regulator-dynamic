@@ -53,7 +53,7 @@ TEST_CASE( "opcount should grow as a quadratically-bounded function for simple c
             &regexp,
             reinterpret_cast<const uint8_t *>(subject.c_str()),
             1 + i,
-            &exec_result
+            exec_result
         );
 
         uint64_t opcount_max = ((7 * (i * i)) + (23 * i)) / 2 + 6 + 10;

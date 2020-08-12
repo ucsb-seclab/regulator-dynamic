@@ -24,11 +24,12 @@ inline void test_mutate_gens_unique()
     std::vector<Char *> coparent_buffer;
 
     regulator::fuzz::Corpus<Char> corpus;
-    corpus.Record(new regulator::fuzz::CorpusEntry<Char>(
+    regulator::fuzz::CorpusEntry<Char> *parent_ce = new regulator::fuzz::CorpusEntry<Char>(
         parent,
         6,
         new regulator::fuzz::CoverageTracker()
-    ));
+    );
+    corpus.Record(parent_ce);
     corpus.FlushGeneration();
 
     for (size_t i=0; i<20; i++)
@@ -41,15 +42,20 @@ inline void test_mutate_gens_unique()
         coparent[3] = 'm';
         coparent[4] = 'a';
         coparent[5] = 's';
-
-        corpus.GenerateChildren(
+        regulator::fuzz::CorpusEntry<Char> ce(
             coparent,
             6,
+            new regulator::fuzz::CoverageTracker()
+        );
+
+        corpus.GenerateChildren(
+            &ce,
             1,
             children
         );
 
         REQUIRE( children.size() == 1 );
+        REQUIRE( children[0] != nullptr );
         REQUIRE_FALSE( memcmp(children[0], coparent, 6 * sizeof(Char)) == 0 );
 
         delete[] children[0];
@@ -66,16 +72,18 @@ TEST_CASE( "Mutator returns 0-len vector when asked" )
 
     std::vector<uint8_t *> children;
     regulator::fuzz::Corpus<uint8_t> corpus;
-    corpus.GenerateChildren(
+    regulator::fuzz::CorpusEntry<uint8_t> ce(
         buf,
         4,
+        new regulator::fuzz::CoverageTracker()
+    );
+    corpus.GenerateChildren(
+        &ce,
         0,
         children
     );
 
     REQUIRE( children.size() == 0 );
-
-    delete[] buf;
 }
 
 TEST_CASE( "Mutator returns 0-len vector when asked (16-bit)" )
@@ -86,16 +94,18 @@ TEST_CASE( "Mutator returns 0-len vector when asked (16-bit)" )
 
     std::vector<uint16_t *> children;
     regulator::fuzz::Corpus<uint16_t> corpus;
-    corpus.GenerateChildren(
+    regulator::fuzz::CorpusEntry<uint16_t> ce(
         buf,
         4,
+        new regulator::fuzz::CoverageTracker()
+    );
+    corpus.GenerateChildren(
+        &ce,
         0,
         children
     );
 
     REQUIRE( children.size() == 0 );
-
-    delete[] buf;
 }
 
 
@@ -142,9 +152,14 @@ TEST_CASE( "Produces more children when prompted" )
     coparent[4] = 'a';
     coparent[5] = 's';
 
-    corp.GenerateChildren(
+    regulator::fuzz::CorpusEntry<uint8_t> ce(
         coparent,
         6,
+        new regulator::fuzz::CoverageTracker()
+    );
+
+    corp.GenerateChildren(
+        &ce,
         20,
         children
     );
@@ -169,7 +184,7 @@ TEST_CASE( "bit-flip will change exactly one bit (1-byte)" )
     {
         memcpy(cpy, subject, sizeof(subject));
 
-        f::bit_flip(cpy, sizeof(subject));
+        f::bit_flip(cpy, sizeof(subject), 0);
 
         size_t popcount = 0;
         for (size_t i=0; i<sizeof(subject); i++)
@@ -191,7 +206,7 @@ TEST_CASE( "bit-flip will change exactly one bit (2-byte)" )
     {
         memcpy(cpy, subject, sizeof(subject));
 
-        f::bit_flip(cpy, sizeof(subject) / 2);
+        f::bit_flip(cpy, sizeof(subject) / 2, 0);
 
         size_t popcount = 0;
         for (size_t i=0; i<sizeof(subject) / 2; i++)
@@ -216,8 +231,6 @@ TEST_CASE( "crossover will use another buffer" )
 
 TEST_CASE( "mutate will eventually place an interesting utf-16 char ")
 {
-    uint16_t parent[5];
-
     uint16_t *coparent = new uint16_t[5];
     coparent[0] = 'a';
     coparent[1] = 'b';
@@ -243,15 +256,21 @@ TEST_CASE( "mutate will eventually place an interesting utf-16 char ")
     for (size_t i=0; i < 200 && !found_special; i++)
     {
         children.clear();
+        uint16_t *parent = new uint16_t[5];
         parent[0] = 'w';
         parent[1] = 'x';
         parent[2] = 'y';
         parent[3] = 'z';
         parent[4] = '!';
 
-        corpus.GenerateChildren(
+        regulator::fuzz::CorpusEntry<uint16_t> ce(
             parent,
             5,
+            new regulator::fuzz::CoverageTracker()
+        );
+
+        corpus.GenerateChildren(
+            &ce,
             10,
             children
         );

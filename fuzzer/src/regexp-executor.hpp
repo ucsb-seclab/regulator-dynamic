@@ -8,6 +8,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <memory>
 
 #include "src/objects/js-regexp.h"
 #include "fuzz/coverage-tracker.hpp"
@@ -52,7 +53,7 @@ public:
 
     bool match_success;
     RepresentationUsed rep_used;
-    regulator::fuzz::CoverageTracker *coverage_tracker;
+    std::unique_ptr<regulator::fuzz::CoverageTracker> coverage_tracker;
 };
 
 /**
@@ -75,7 +76,7 @@ Result Exec(
     V8RegExp *regexp,
     const Char *subject,
     size_t subject_len,
-    V8RegExpResult *out,
+    V8RegExpResult &out,
     EnforceRepresentation rep = kAnyRepresentation);
 
 }

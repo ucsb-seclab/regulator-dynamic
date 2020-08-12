@@ -34,7 +34,7 @@ TEST_CASE( "simple unicode subject string" ) {
         &regexp,
         subject,
         sizeof(subject),
-        &exec_result
+        exec_result
     );
     
     REQUIRE( exec_result_status == e::kSuccess );

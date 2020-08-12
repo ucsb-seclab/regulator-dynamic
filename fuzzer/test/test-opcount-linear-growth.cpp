@@ -54,7 +54,7 @@ TEST_CASE( "opcount should grow as a linearly-bounded function for simple case 1
             &regexp,
             reinterpret_cast<const uint8_t *>(subject.c_str()),
             2 + i,
-            &exec_result
+            exec_result
         );
 
         uint64_t expected_max = 15 + (3 * i) + 10;

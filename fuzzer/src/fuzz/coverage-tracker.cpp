@@ -23,7 +23,9 @@ CoverageTracker::CoverageTracker()
     this->covmap = new cov_t[MAP_SIZE];
     this->Clear();
     this->_deleted = false;
+    this->last_cursor_pos = SIZE_MAX;
 }
+
 
 CoverageTracker::CoverageTracker(const CoverageTracker &other)
 {
@@ -32,6 +34,7 @@ CoverageTracker::CoverageTracker(const CoverageTracker &other)
     memcpy(this->covmap, other.covmap, MAP_SIZE * sizeof(cov_t));
     this->path_hash = other.path_hash;
     this->_deleted = false;
+    this->last_cursor_pos = SIZE_MAX;
 }
 
 
@@ -214,6 +217,16 @@ bool CoverageTracker::EdgeIsGreater(CoverageTracker *other, size_t edge_id) cons
 bool CoverageTracker::EdgeIsCovered(size_t edge_id) const
 {
     return this->covmap[edge_id] > 0;
+}
+
+size_t CoverageTracker::FinalCursorPosition() const
+{
+    return this->last_cursor_pos;
+}
+
+void CoverageTracker::RecordFinalCursorPosition(size_t pos)
+{
+    this->last_cursor_pos = pos;
 }
 
 size_t CoverageTracker::MemoryFootprint() const

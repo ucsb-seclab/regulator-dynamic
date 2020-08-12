@@ -9,6 +9,7 @@
 #include "interesting-char-finder.hpp"
 #include "flags.hpp"
 
+#include <memory>
 #include <cstring>
 #include <random>
 #include <chrono>
@@ -107,11 +108,11 @@ typedef struct {
     /**
      * The one-byte campaign details
      */
-    FuzzCampaign<uint8_t> *campaign_one_byte;
+    std::unique_ptr<FuzzCampaign<uint8_t>> campaign_one_byte;
     /**
      * The two-byte campaign details
      */
-    FuzzCampaign<uint16_t> *campaign_two_byte;
+    std::unique_ptr<FuzzCampaign<uint16_t>> campaign_two_byte;
     /**
      * When true, the fuzzing loop should exit as soon as possible
      */
@@ -144,7 +145,7 @@ inline void work_interrupt(exec_context &ctx)
 
         if (ctx.campaign_one_byte != nullptr)
         {
-            FuzzCampaign<uint8_t> *campaign = ctx.campaign_one_byte;
+            FuzzCampaign<uint8_t> *campaign = ctx.campaign_one_byte.get();
             double execs_per_second = campaign->executions_since_last_render / seconds_elapsed_since_last_render;
             std::cout << "1-byte summary: "
                 << "Exec/s: "
@@ -159,7 +160,7 @@ inline void work_interrupt(exec_context &ctx)
 
         if (ctx.campaign_two_byte != nullptr)
         {
-            FuzzCampaign<uint16_t> *campaign = ctx.campaign_two_byte;
+            FuzzCampaign<uint16_t> *campaign = ctx.campaign_two_byte.get();
             double execs_per_second = campaign->executions_since_last_render / seconds_elapsed_since_last_render;
             std::cout << "2-byte summary: "
                 << "Exec/s: "
@@ -291,7 +292,7 @@ inline bool seed_corpus(
         regexp,
         baseline,
         strlen,
-        &result,
+        result,
         regulator::executor::kOnlyOneByte
     );
 
@@ -327,11 +328,10 @@ inline void evaluate_child(
     Char *child,
     size_t &strlen,
     regulator::executor::V8RegExp *regexp,
+    regulator::executor::V8RegExpResult &result, // share this memory to avoid re-allocing all the time
     FuzzCampaign<Char> *campaign,
     CorpusEntry<Char> *parent)
 {
-    regulator::executor::V8RegExpResult result;
-
 #ifdef REG_PROFILE
     std::chrono::steady_clock::time_point exec_start = std::chrono::steady_clock::now();
 #endif
@@ -344,7 +344,7 @@ inline void evaluate_child(
         regexp,
         child,
         strlen,
-        &result,
+        result,
         enforce_encoding
     );
 
@@ -362,29 +362,26 @@ inline void evaluate_child(
         // If this child uncovered new behavior, then add it to new_children
         // (later added to corpus, which assumes ownership)
         if (
-                campaign->corpus->HasNewPath(result.coverage_tracker) &&
-                !campaign->corpus->IsRedundant(result.coverage_tracker)
+                campaign->corpus->HasNewPath(result.coverage_tracker.get()) &&
+                !campaign->corpus->IsRedundant(result.coverage_tracker.get())
             )
         {
-            campaign->corpus->BumpStaleness(result.coverage_tracker);
+            campaign->corpus->BumpStaleness(result.coverage_tracker.get());
 
             campaign->corpus->Record(
                 new CorpusEntry<Char>(
                     child,
                     strlen,
-                    new CoverageTracker(*result.coverage_tracker)
+                    new CoverageTracker(*result.coverage_tracker.get())
                 )
             );
 
-            // avoids double free, but we should probably make the V8ExecResult
-            // not call delete on the coverage tracker to avoid having to do this...
-            result.coverage_tracker = nullptr;
             return;
         }
     }
 
+    // No significance found in this child -- toss its memory
     delete[] child;
-    result.coverage_tracker = nullptr;
     return;
 }
 
@@ -398,10 +395,8 @@ inline void work_on_corpus(
     regulator::executor::V8RegExp *regexp,
     size_t &strlen,
     FuzzCampaign<Char> *campaign)
-{
-
-    // TODO this can be made an array if we're only generating a
-    // fixed-length number of children
+{    
+    regulator::executor::V8RegExpResult result;
     std::vector<Char *> children_to_eval;
 
     for (;std::chrono::steady_clock::now() < campaign->yield_deadline;)
@@ -432,8 +427,7 @@ inline void work_on_corpus(
 #endif
         children_to_eval.clear();
         campaign->corpus->GenerateChildren(
-            parent->buf,
-            parent->buflen,
+            parent,
             N_CHILDREN_PER_PARENT,
             children_to_eval
         );
@@ -450,6 +444,7 @@ inline void work_on_corpus(
                 child,
                 strlen,
                 regexp,
+                result,
                 campaign,
                 parent
             );
@@ -475,7 +470,7 @@ uint64_t Fuzz(
 
     if (fuzz_one_byte)
     {
-        context.campaign_one_byte = new FuzzCampaign<uint8_t>();
+        context.campaign_one_byte = std::make_unique<FuzzCampaign<uint8_t>>();
 
         if (!seed_corpus(context.campaign_one_byte->corpus, regexp, strlen))
         {
@@ -496,7 +491,7 @@ uint64_t Fuzz(
 
     if (fuzz_two_byte)
     {
-        context.campaign_two_byte = new FuzzCampaign<uint16_t>();
+        context.campaign_two_byte = std::make_unique<FuzzCampaign<uint16_t>>();
         
         if (!seed_corpus(context.campaign_two_byte->corpus, regexp, strlen))
         {
@@ -533,7 +528,7 @@ uint64_t Fuzz(
                 context,
                 regexp,
                 strlen,
-                context.campaign_one_byte
+                context.campaign_one_byte.get()
             );
             work_interrupt(context);
         }
@@ -545,7 +540,7 @@ uint64_t Fuzz(
                 context,
                 regexp,
                 strlen,
-                context.campaign_two_byte
+                context.campaign_two_byte.get()
             );
             work_interrupt(context);
         }

@@ -35,7 +35,7 @@ TEST_CASE( "expanding on hidden catastrophic backtracking is rewarded" )
         &regexp,
         success_match,
         sizeof(success_match),
-        &exec_result,
+        exec_result,
         e::kOnlyOneByte
     );
 
@@ -49,7 +49,7 @@ TEST_CASE( "expanding on hidden catastrophic backtracking is rewarded" )
         &regexp,
         basic_input,
         sizeof(basic_input),
-        &exec_result,
+        exec_result,
         e::kOnlyOneByte
     );
 
@@ -65,7 +65,7 @@ TEST_CASE( "expanding on hidden catastrophic backtracking is rewarded" )
         &regexp,
         deeper_input,
         sizeof(deeper_input),
-        &exec_result,
+        exec_result,
         e::kOnlyOneByte
     );
 
@@ -82,14 +82,14 @@ TEST_CASE( "expanding on hidden catastrophic backtracking is rewarded" )
         &regexp,
         even_deeper_input,
         sizeof(even_deeper_input),
-        &exec_result,
+        exec_result,
         e::kOnlyOneByte
     );
 
     REQUIRE( exec_result_status == e::kSuccess );
     REQUIRE( exec_result.match_success == false );
 
-    REQUIRE( covtrack_2.HasNewPath(exec_result.coverage_tracker) );
+    REQUIRE( covtrack_2.HasNewPath(exec_result.coverage_tracker.get()) );
     REQUIRE( covtrack_2.Total() < exec_result.coverage_tracker->Total() );
 
     v8::internal::FLAG_trace_regexp_bytecodes = false;

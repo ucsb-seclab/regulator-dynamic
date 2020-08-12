@@ -29,7 +29,7 @@ TEST_CASE( "Should show some coverage" ) {
         &regexp,
         reinterpret_cast<const uint8_t *>(subject.c_str()),
         13,
-        &exec_result
+        exec_result
     );
     
     REQUIRE( exec_result_status == e::kSuccess );
@@ -56,7 +56,7 @@ TEST_CASE( "Coverage should increase as regexp match progresses" )
         &regexp,
         reinterpret_cast<const uint8_t *>(subject1.c_str()),
         8,
-        &exec_result1
+        exec_result1
     );
 
     REQUIRE( exec_result_status == e::kSuccess );
@@ -67,16 +67,16 @@ TEST_CASE( "Coverage should increase as regexp match progresses" )
         &regexp,
         reinterpret_cast<const uint8_t *>(subject2.c_str()),
         8,
-        &exec_result2
+        exec_result2
     );
 
     REQUIRE( exec_result_status == e::kSuccess );
-    REQUIRE( exec_result1.coverage_tracker->HasNewPath(exec_result2.coverage_tracker) );
+    REQUIRE( exec_result1.coverage_tracker->HasNewPath(exec_result2.coverage_tracker.get()) );
 
     regulator::fuzz::CoverageTracker union_;
-    union_.Union(exec_result1.coverage_tracker);
-    union_.Union(exec_result2.coverage_tracker);
+    union_.Union(exec_result1.coverage_tracker.get());
+    union_.Union(exec_result2.coverage_tracker.get());
 
-    REQUIRE_FALSE( union_.HasNewPath(exec_result1.coverage_tracker) );
-    REQUIRE_FALSE( union_.HasNewPath(exec_result2.coverage_tracker) );
+    REQUIRE_FALSE( union_.HasNewPath(exec_result1.coverage_tracker.get()) );
+    REQUIRE_FALSE( union_.HasNewPath(exec_result2.coverage_tracker.get()) );
 }

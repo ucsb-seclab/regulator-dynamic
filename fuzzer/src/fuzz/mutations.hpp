@@ -23,26 +23,26 @@ namespace fuzz
  * Select one char and mutate it to some random value
  */
 template<typename Char>
-void mutate_random_char(Char *buf, size_t buflen);
+void mutate_random_char(Char *buf, size_t buflen, size_t suggested_loc);
 
 /**
  * Add (or subtract) some value -8 <= v <= 8, v /= 0
  * at a random position.
  */
 template<typename Char>
-void arith_random_char(Char *buf, size_t buflen);
+void arith_random_char(Char *buf, size_t buflen, size_t suggested_loc);
 
 /**
  * Swap a char with another one.
  */
 template<typename Char>
-void swap_random_char(Char *buf, size_t buflen);
+void swap_random_char(Char *buf, size_t buflen, size_t suggested_loc);
 
 /**
  * Flip one random bit.
  */
 template<typename Char>
-void bit_flip(Char *buf, size_t buflen);
+void bit_flip(Char *buf, size_t buflen, size_t suggested_loc);
 
 /**
  * Copy a random substring from coparent into buf
@@ -62,7 +62,7 @@ void duplicate_subsequence(Char *buf, size_t buflen);
  * Select a random character to replace with a "special" char
  */
 template<typename Char>
-void replace_with_special(Char *buf, size_t buflen, std::vector<Char> &extra_interesting);
+void replace_with_special(Char *buf, size_t buflen, std::vector<Char> &extra_interesting, size_t suggested_loc);
 
 
 /**
