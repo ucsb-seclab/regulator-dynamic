@@ -19,6 +19,7 @@ namespace fuzz
 CoverageTracker::CoverageTracker()
 {
     this->covmap = new cov_t[MAP_SIZE];
+    this->suggestions = new struct suggestion[MAP_SIZE];
     this->Clear();
 }
 
@@ -26,10 +27,11 @@ CoverageTracker::CoverageTracker()
 CoverageTracker::CoverageTracker(const CoverageTracker &other)
 {
     this->covmap = new cov_t[MAP_SIZE];
+    this->suggestions = new struct suggestion[MAP_SIZE];
     memcpy(this->covmap, other.covmap, MAP_SIZE * sizeof(cov_t));
+    memcpy(this->suggestions, other.suggestions, MAP_SIZE * sizeof(struct suggestion));
     this->total = other.total;
     this->path_hash = other.path_hash;
-    this->last_cursor_pos = other.last_cursor_pos;
 }
 
 
@@ -56,13 +58,13 @@ void CoverageTracker::Cover(uintptr_t src_addr, uintptr_t dst_addr)
     {
         this->total++;
     }
-    const uint32_t bit_to_set = REGULATOR_FUZZ_TRANSFORM_ADDR(src_addr) ^
+    const uint32_t byte_to_set = REGULATOR_FUZZ_TRANSFORM_ADDR(src_addr) ^
                                 REGULATOR_FUZZ_TRANSFORM_ADDR(dst_addr);
 
     // protect from overflow by setting to MAX
-    if (this->covmap[bit_to_set] < COV_MAX)
+    if (this->covmap[byte_to_set] < COV_MAX)
     {
-        this->covmap[bit_to_set]++;
+        this->covmap[byte_to_set]++;
     }
 
     // mix into path hash
@@ -89,10 +91,14 @@ uint64_t CoverageTracker::Total()
 
 void CoverageTracker::Clear()
 {
-    this->last_cursor_pos = SIZE_MAX;
     this->path_hash = 0;
     this->total = 0;
     memset(this->covmap, 0, MAP_SIZE * sizeof(cov_t));
+    for (size_t i=0; i < MAP_SIZE; i++)
+    {
+        this->suggestions[i].c = 0;
+        this->suggestions[i].pos = -1;
+    }
 }
 
 /**
@@ -211,15 +217,29 @@ bool CoverageTracker::EdgeIsCovered(size_t edge_id) const
     return this->covmap[edge_id] > 0;
 }
 
-size_t CoverageTracker::FinalCursorPosition() const
+void CoverageTracker::Suggest(uintptr_t src, uintptr_t dst, uint16_t c, int pos)
 {
-    return this->last_cursor_pos;
+    src *= 2;
+    const uint32_t byte_to_set = REGULATOR_FUZZ_TRANSFORM_ADDR(src) ^
+                            REGULATOR_FUZZ_TRANSFORM_ADDR(dst);
+
+    this->suggestions[byte_to_set].c = c;
+    this->suggestions[byte_to_set].pos = static_cast<uint16_t>(
+        std::min(static_cast<int>(UINT16_MAX), pos)
+    );
 }
 
-void CoverageTracker::RecordFinalCursorPosition(size_t pos)
+void CoverageTracker::GetSuggestions(std::vector<struct suggestion> &out, const CoverageTracker *other) const
 {
-    this->last_cursor_pos = pos;
+    for (size_t i=0; i < MAP_SIZE; i++)
+    {
+        if (other->covmap[i] == 0 && this->suggestions[i].pos >= 0)
+        {
+            out.push_back(this->suggestions[i]);
+        }
+    }
 }
+
 
 size_t CoverageTracker::MemoryFootprint() const
 {

@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "corpus.hpp"
+#include "coverage-tracker.hpp"
 
 namespace regulator
 {
@@ -23,26 +24,26 @@ namespace fuzz
  * Select one char and mutate it to some random value
  */
 template<typename Char>
-void mutate_random_char(Char *buf, size_t buflen, size_t suggested_loc);
+void mutate_random_char(Char *buf, size_t buflen);
 
 /**
  * Add (or subtract) some value -8 <= v <= 8, v /= 0
  * at a random position.
  */
 template<typename Char>
-void arith_random_char(Char *buf, size_t buflen, size_t suggested_loc);
+void arith_random_char(Char *buf, size_t buflen);
 
 /**
  * Swap a char with another one.
  */
 template<typename Char>
-void swap_random_char(Char *buf, size_t buflen, size_t suggested_loc);
+void swap_random_char(Char *buf, size_t buflen);
 
 /**
  * Flip one random bit.
  */
 template<typename Char>
-void bit_flip(Char *buf, size_t buflen, size_t suggested_loc);
+void bit_flip(Char *buf, size_t buflen);
 
 /**
  * Copy a random substring from coparent into buf
@@ -62,8 +63,22 @@ void duplicate_subsequence(Char *buf, size_t buflen);
  * Select a random character to replace with a "special" char
  */
 template<typename Char>
-void replace_with_special(Char *buf, size_t buflen, std::vector<Char> &extra_interesting, size_t suggested_loc);
+void replace_with_special(
+    Char *buf,
+    size_t buflen,
+    std::vector<Char> &extra_interesting
+);
 
+
+/**
+ * Make a suggested change from the set.
+ */
+template<typename Char>
+void take_a_suggestion(
+    Char *buf,
+    size_t buflen,
+    struct suggestion &suggestion
+);
 
 /**
  * Rotate the string by one character in a randomly

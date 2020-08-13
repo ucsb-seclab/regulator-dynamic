@@ -14,6 +14,12 @@ namespace regulator
 namespace fuzz
 {
 
+/**
+ * The maximum number of suggestions to follow
+ * while generating children.
+ */
+static const size_t MAX_SUGGESTIONS = 10;
+
 template <typename Char>
 CorpusEntry<Char>::CorpusEntry(
     Char *buf,
@@ -223,9 +229,35 @@ void Corpus<Char>::GenerateChildren(
     std::vector<Char *> &out
 )
 {
-    // NOTE: each child is a mutation OF THE PREVIOUS GENERATED CHILD
+    // NOTE: for PerfFuzz, each child is a mutation OF THE PREVIOUS GENERATED CHILD
+    // ... but I've commented that bit out below
     const Char *last_buf = parent->buf;
     size_t buflen = parent->buflen;
+
+    // Get the mutation suggestions
+    std::vector<struct suggestion> suggestions;
+    parent->coverage_tracker->GetSuggestions(
+        suggestions,
+        this->coverage_upper_bound
+    );
+
+    // Shuffle the suggestions using a Fisher-Yates shuffle
+    // BUT stop after the first MAX_SUGGESTIONS slots
+    for (size_t i=0; i + 2 <= std::min(MAX_SUGGESTIONS, suggestions.size()); i++)
+    {
+        size_t j = (static_cast<size_t>(random()) % (suggestions.size() - i)) + i;
+        struct suggestion tmp = suggestions[i];
+        suggestions[i] = suggestions[j];
+        suggestions[j] = tmp;
+    }
+
+    for (size_t i=0; i < std::min(MAX_SUGGESTIONS, suggestions.size()); i++)
+    {
+        Char *newbuf = new Char[buflen];
+        memcpy(newbuf, parent->buf, buflen * sizeof(Char));
+        take_a_suggestion(newbuf, buflen, suggestions[i]);
+        n_children--;
+    }
 
     for (size_t i = 0; i < n_children; i++)
     {
@@ -237,18 +269,16 @@ void Corpus<Char>::GenerateChildren(
         switch (random() % 16)
         {
         case 0:
-            mutate_random_char(newbuf, buflen, parent->coverage_tracker->FinalCursorPosition());
+            mutate_random_char(newbuf, buflen);
             break;
         case 1:
         case 2:
-            arith_random_char(newbuf, buflen, parent->coverage_tracker->FinalCursorPosition());
+            arith_random_char(newbuf, buflen);
             break;
         case 3:
         case 4:
-            swap_random_char(newbuf, buflen, parent->coverage_tracker->FinalCursorPosition());
+            swap_random_char(newbuf, buflen);
             break;
-            // bit_flip(newbuf, buflen);
-            // break;
         case 6:
         case 7:
             crossover(newbuf, buflen, this->GetCoparent());
@@ -261,7 +291,7 @@ void Corpus<Char>::GenerateChildren(
         case 11:
         case 12:
         case 13:
-            replace_with_special(newbuf, buflen, *this->extra_interesting, parent->coverage_tracker->FinalCursorPosition());
+            replace_with_special(newbuf, buflen, *this->extra_interesting);
             break;
         case 5:
         case 14:

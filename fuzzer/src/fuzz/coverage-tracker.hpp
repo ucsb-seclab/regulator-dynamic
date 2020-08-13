@@ -27,6 +27,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <vector>
 
 namespace regulator
 {
@@ -61,6 +62,13 @@ constexpr uint32_t CODE_MASK = (1 << MAX_CODE_SIZE) - 1;
 // KEEP A MULTIPLE OF TWO
 constexpr uint32_t MAP_SIZE = 1 << MAX_CODE_SIZE;
 
+struct suggestion
+{
+    // the suggested char (if 1-byte, use lower half)
+    uint16_t c;
+    // the suggested position in the string
+    int16_t pos;
+};
 
 /**
  * AFL-style coverage tracker.
@@ -193,23 +201,29 @@ public:
 
 
     /**
-     * Gets the index into the subject string at which
-     * the regular expression engine terminated.
+     * Record a suggested mutation for the cov_t entry
+     * representing a transition from 'src' to 'dst'.
+     * 
+     * Use this to offer a suggestion about how to reach
+     * a different branch.
      */
-    size_t FinalCursorPosition() const;
+    void Suggest(uintptr_t src, uintptr_t dst, uint16_t c, int pos);
+
 
     /**
-     * Sets the index into the subject string which
-     * the regular expression engine terminated at.
+     * Get a list of suggested mutations, excluding all suggestions
+     * which cover a path already discovered in `other`.
      */
-    void RecordFinalCursorPosition(size_t pos);
+    void GetSuggestions(
+        std::vector<struct suggestion> &out,
+        const CoverageTracker *other
+    ) const;
 
 private:
     cov_t *covmap;
+    struct suggestion *suggestions;
     uint64_t total;
-    size_t last_cursor_pos;
     path_hash_t path_hash;
-    bool _deleted;
 };
 
 }

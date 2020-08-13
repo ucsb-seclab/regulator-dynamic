@@ -327,7 +327,9 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
                                      int current, uint32_t current_char,
                                      RegExp::CallOrigin call_origin,
                                      const uint32_t backtrack_limit,
-                                     regulator::fuzz::CoverageTracker *coverage_tracker) {
+                                     regulator::fuzz::CoverageTracker *coverage_tracker,
+                                     int registers_length) {
+  int current_char_src = -1;
 
 // ------- (end) mod_mcl_2020 -------
 
@@ -467,11 +469,6 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       STATIC_ASSERT(JSRegExp::kNoBacktrackLimit == 0);
       if (++backtrack_count == backtrack_limit) {
         // Exceeded limits are treated as a failed match.
-
-        // ------- mod_mcl_2020 -------
-        coverage_tracker->RecordFinalCursorPosition(current);
-        // ------- mod_mcl_2020 -------
-
         return IrregexpInterpreter::FAILURE;
       }
 
@@ -491,17 +488,11 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
     BYTECODE(FAIL) {
       isolate->counters()->regexp_backtracks()->AddSample(
           static_cast<int>(backtrack_count));
-      // ------- mod_mcl_2020 -------
-      coverage_tracker->RecordFinalCursorPosition(current);
-      // ------- mod_mcl_2020 -------
       return IrregexpInterpreter::FAILURE;
     }
     BYTECODE(SUCCEED) {
       isolate->counters()->regexp_backtracks()->AddSample(
           static_cast<int>(backtrack_count));
-      // ------- mod_mcl_2020 -------
-      coverage_tracker->RecordFinalCursorPosition(current);
-      // ------- mod_mcl_2020 -------
       return IrregexpInterpreter::SUCCESS;
     }
     BYTECODE(ADVANCE_CP) {
@@ -542,6 +533,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
         // ------- (end) mod_mcl_2020 -------
         current_char = subject[pos];
+        current_char_src = pos; // ------- mod_mcl_2020 -------
       }
       DISPATCH();
     }
@@ -549,6 +541,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       ADVANCE(LOAD_CURRENT_CHAR_UNCHECKED);
       int pos = current + (insn >> BYTECODE_SHIFT);
       current_char = subject[pos];
+      current_char_src = pos; // ------- mod_mcl_2020 -------
       DISPATCH();
     }
     BYTECODE(LOAD_2_CURRENT_CHARS) {
@@ -563,6 +556,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         // ------- (end) mod_mcl_2020 -------
         Char next = subject[pos + 1];
         current_char = (subject[pos] | (next << (kBitsPerByte * sizeof(Char))));
+        current_char_src = pos; // ------- mod_mcl_2020 -------
       }
       DISPATCH();
     }
@@ -571,6 +565,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       int pos = current + (insn >> BYTECODE_SHIFT);
       Char next = subject[pos + 1];
       current_char = (subject[pos] | (next << (kBitsPerByte * sizeof(Char))));
+      current_char_src = pos; // ------- mod_mcl_2020 -------
       DISPATCH();
     }
     BYTECODE(LOAD_4_CURRENT_CHARS) {
@@ -589,6 +584,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         Char next3 = subject[pos + 3];
         current_char =
             (subject[pos] | (next1 << 8) | (next2 << 16) | (next3 << 24));
+        current_char_src = pos; // ------- mod_mcl_2020 -------
       }
       DISPATCH();
     }
@@ -601,6 +597,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       Char next3 = subject[pos + 3];
       current_char =
           (subject[pos] | (next1 << 8) | (next2 << 16) | (next3 << 24));
+      current_char_src = pos; // ------- mod_mcl_2020 -------
       DISPATCH();
     }
     BYTECODE(CHECK_4_CHARS) {
@@ -623,8 +620,15 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       } else {
         // ------- mod_mcl_2020 -------
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
+        uintptr_t other_branch_pc = reinterpret_cast<const uintptr_t>(code_base + Load32Aligned(pc + 4));
         ADVANCE(CHECK_CHAR);
         coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        coverage_tracker->Suggest(
+          prev_pc,
+          other_branch_pc,
+          c,
+          current_char_src
+        );
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -645,6 +649,16 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
     BYTECODE(CHECK_NOT_CHAR) {
       uint32_t c = (insn >> BYTECODE_SHIFT);
       if (c != current_char) {
+        // ------- mod_mcl_2020 -------
+        uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
+        uintptr_t other_branch_pc = reinterpret_cast<const uintptr_t>(pc + RegExpBytecodeLength(BC_CHECK_NOT_CHAR));
+        coverage_tracker->Suggest(
+          prev_pc,
+          other_branch_pc,
+          c,
+          current_char_src
+        );
+        // ------- (end) mod_mcl_2020 -------
         SET_PC_FROM_OFFSET(Load32Aligned(pc + 4));
       } else {
         // ------- mod_mcl_2020 -------
@@ -947,6 +961,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       if (subject.length() - current > by) {
         current = subject.length() - by;
         current_char = subject[current - 1];
+        current_char_src = current - 1; // ------- mod_mcl_2020 -------
       }
       DISPATCH();
     }
@@ -970,6 +985,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       while (static_cast<uintptr_t>(current + load_offset) <
              static_cast<uintptr_t>(subject.length())) {
         current_char = subject[current + load_offset];
+        current_char_src = current + load_offset; // ------- mod_mcl_2020 -------
         if (c == current_char) {
           SET_PC_FROM_OFFSET(Load32Aligned(pc + 8));
           DISPATCH();
@@ -989,6 +1005,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       while (static_cast<uintptr_t>(current + maximum_offset) <=
              static_cast<uintptr_t>(subject.length())) {
         current_char = subject[current + load_offset];
+        current_char_src = current + load_offset; // ------- mod_mcl_2020 -------
         if (c == (current_char & mask)) {
           SET_PC_FROM_OFFSET(Load32Aligned(pc + 16));
           DISPATCH();
@@ -1007,6 +1024,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       while (static_cast<uintptr_t>(current + maximum_offset) <=
              static_cast<uintptr_t>(subject.length())) {
         current_char = subject[current + load_offset];
+        current_char_src = current + load_offset; // ------- mod_mcl_2020 -------
         if (c == current_char) {
           SET_PC_FROM_OFFSET(Load32Aligned(pc + 12));
           DISPATCH();
@@ -1024,6 +1042,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       while (static_cast<uintptr_t>(current + load_offset) <
              static_cast<uintptr_t>(subject.length())) {
         current_char = subject[current + load_offset];
+        current_char_src = current + load_offset; // ------- mod_mcl_2020 -------
         if (CheckBitInTable(current_char, table)) {
           SET_PC_FROM_OFFSET(Load32Aligned(pc + 24));
           DISPATCH();
@@ -1042,6 +1061,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       while (static_cast<uintptr_t>(current + load_offset) <
              static_cast<uintptr_t>(subject.length())) {
         current_char = subject[current + load_offset];
+        current_char_src = current + load_offset; // ------- mod_mcl_2020 -------
         if (current_char > limit) {
           SET_PC_FROM_OFFSET(Load32Aligned(pc + 24));
           DISPATCH();
@@ -1064,6 +1084,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       while (static_cast<uintptr_t>(current + load_offset) <
              static_cast<uintptr_t>(subject.length())) {
         current_char = subject[current + load_offset];
+        current_char_src = current + load_offset; // ------- mod_mcl_2020 -------
         // The two if-statements below are split up intentionally, as combining
         // them seems to result in register allocation behaving quite
         // differently and slowing down the resulting code.
@@ -1103,29 +1124,6 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
 #undef BC_LABEL
 #undef V8_USE_COMPUTED_GOTO
 
-template <typename Char>
-IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
-                                     String subject_string,
-                                     Vector<const Char> subject, int* registers,
-                                     int current, uint32_t current_char,
-                                     RegExp::CallOrigin call_origin,
-                                     const uint32_t backtrack_limit) {
-
-  auto coverage_tracker = std::make_unique<regulator::fuzz::CoverageTracker>();
-
-  return RawMatch(
-    isolate,
-    code_array,
-    subject_string,
-    subject,
-    registers,
-    current,
-    current_char,
-    call_origin,
-    backtrack_limit,
-    coverage_tracker.get()
-  );
-}
 
 }  // namespace
 
@@ -1213,14 +1211,14 @@ IrregexpInterpreter::Result IrregexpInterpreter::MatchInternal(
     if (start_position != 0) previous_char = subject_vector[start_position - 1];
     return RawMatch(isolate, code_array, subject_string, subject_vector,
                     registers, start_position, previous_char, call_origin,
-                    backtrack_limit, coverage_tracker);
+                    backtrack_limit, coverage_tracker, registers_length);
   } else {
     DCHECK(subject_content.IsTwoByte());
     Vector<const uc16> subject_vector = subject_content.ToUC16Vector();
     if (start_position != 0) previous_char = subject_vector[start_position - 1];
     return RawMatch(isolate, code_array, subject_string, subject_vector,
                     registers, start_position, previous_char, call_origin,
-                    backtrack_limit, coverage_tracker);
+                    backtrack_limit, coverage_tracker, registers_length);
   }
 }
 

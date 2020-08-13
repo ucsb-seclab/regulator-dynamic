@@ -131,7 +131,7 @@ inline void work_interrupt(exec_context &ctx)
     ctx.exit_requested = now >= ctx.deadline;
 
     // Print stuff to screen if we haven't done that lately
-    if ((now - ctx.last_screen_render) > std::chrono::milliseconds(100))
+    if ((now - ctx.last_screen_render) > std::chrono::milliseconds(500))
     {
         auto elapsed = now - ctx.begin;
         double seconds_elapsed = elapsed.count() / (static_cast<double>(std::nano::den));
