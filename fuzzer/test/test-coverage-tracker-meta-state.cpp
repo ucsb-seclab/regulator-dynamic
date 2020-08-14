@@ -14,8 +14,6 @@ namespace e = regulator::executor;
 
 TEST_CASE( "CoverageTracker should report where we would expect the matching rejects / matches [SIMPLE]" )
 {
-    f::CoverageTracker fake_upper_bound;
-
     v8::Isolate *isolate = regulator::executor::Initialize();
     v8::HandleScope scope(isolate);
     v8::Local<v8::Context> ctx = v8::Context::New(isolate);
@@ -40,7 +38,7 @@ TEST_CASE( "CoverageTracker should report where we would expect the matching rej
     REQUIRE( exec_result.match_success == false );
 
     std::vector<f::suggestion> suggestions;
-    exec_result.coverage_tracker->GetSuggestions(suggestions, &fake_upper_bound);
+    exec_result.coverage_tracker->GetSuggestions(suggestions);
     REQUIRE( suggestions.size() > 0 );
 
     bool found_expected_suggestion = false;
@@ -55,17 +53,4 @@ TEST_CASE( "CoverageTracker should report where we would expect the matching rej
 
     REQUIRE( found_expected_suggestion == true );
 
-    // e::V8RegExpResult exec_result2;
-    // subject = "xxxxxxxxxfooxxxxxxxxxxx";
-    // exec_result_status = e::Exec<uint8_t>(
-    //     &regexp,
-    //     reinterpret_cast<const uint8_t *>(subject.c_str()),
-    //     subject.length(),
-    //     exec_result2
-    // );
-
-    // REQUIRE( exec_result_status == e::kSuccess );
-    // REQUIRE( exec_result2.match_success == true );
-    // REQUIRE( exec_result2.coverage_tracker->FinalCursorPosition() > 8 );
-    // REQUIRE( exec_result2.coverage_tracker->FinalCursorPosition() < 13 );
 }
