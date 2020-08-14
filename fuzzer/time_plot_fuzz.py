@@ -96,9 +96,7 @@ def main():
         check=True,
     )
 
-    print(git_prog2.stdout)
-
-    exit(1)
+    clean = len(git_prog2.stdout.strip()) == 0
 
     # Tracks fuzz progress over time on two parallel arrays
     fuzz_progress_past_runs = []
@@ -173,7 +171,12 @@ def main():
             fuzz_progress_maxcost.append(maxcost)
 
             ax.clear()
-            ax.set_title('Fuzzing Progress (l={0}) {1}'.format(args.length, args.REGEXP))
+            ax.set_title('Fuzzing Progress (l={0}) {1}\ncommit={2}{3}'.format(
+                args.length,
+                args.REGEXP,
+                commit,
+                '' if clean else '*',
+            ))
             ax.set_xlabel('Seconds elapsed')
             ax.set_ylabel('Greatest known execution cost')
 
