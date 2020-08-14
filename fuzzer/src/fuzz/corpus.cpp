@@ -256,6 +256,7 @@ void Corpus<Char>::GenerateChildren(
         Char *newbuf = new Char[buflen];
         memcpy(newbuf, parent->buf, buflen * sizeof(Char));
         take_a_suggestion(newbuf, buflen, suggestions[i]);
+        out.push_back(newbuf);
         n_children--;
     }
 
@@ -263,7 +264,6 @@ void Corpus<Char>::GenerateChildren(
     {
         Char *newbuf = new Char[buflen];
         memcpy(newbuf, last_buf, buflen * sizeof(Char));
-        Char *coparent;
 
         // select a mutation to apply
         switch (random() % 16)

@@ -198,12 +198,12 @@ inline void rotate_once(Char *buf, size_t buflen)
 {
     // when = +1, rotates left
     // when = -1, rotates right
-    int direction = ((static_cast<int>(random()) & 0x1) * 2) - 1;
+    int32_t direction = ((static_cast<int32_t>(random() & 0x1)) * 2) - 1;
 
     // which end of the buffer to start on?
     // when rotating left,  0
     // when rotating right, buflen
-    size_t curr = direction == 1 ? 0 : buflen;
+    size_t curr = direction == 1 ? 0 : buflen - 1;
 
     // store the end char (We overwrite it)
     Char tmp = buf[curr];

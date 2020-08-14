@@ -437,6 +437,7 @@ inline void work_on_corpus(
         for (size_t j = 0; j < children_to_eval.size(); j++)
         {
             Char *child = children_to_eval[j];
+
             evaluate_child<Char>(
                 context,
                 child,
