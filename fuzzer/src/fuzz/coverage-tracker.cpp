@@ -19,7 +19,6 @@ namespace fuzz
 CoverageTracker::CoverageTracker()
 {
     this->covmap = new cov_t[MAP_SIZE];
-    this->suggestions = new struct suggestion[MAP_SIZE];
     this->Clear();
 }
 
@@ -27,11 +26,10 @@ CoverageTracker::CoverageTracker()
 CoverageTracker::CoverageTracker(const CoverageTracker &other)
 {
     this->covmap = new cov_t[MAP_SIZE];
-    this->suggestions = new struct suggestion[MAP_SIZE];
     memcpy(this->covmap, other.covmap, MAP_SIZE * sizeof(cov_t));
-    memcpy(this->suggestions, other.suggestions, MAP_SIZE * sizeof(struct suggestion));
     this->total = other.total;
     this->path_hash = other.path_hash;
+    this->suggestions = other.suggestions;
 }
 
 
@@ -94,11 +92,7 @@ void CoverageTracker::Clear()
     this->path_hash = 0;
     this->total = 0;
     memset(this->covmap, 0, MAP_SIZE * sizeof(cov_t));
-    for (size_t i=0; i < MAP_SIZE; i++)
-    {
-        this->suggestions[i].c = 0;
-        this->suggestions[i].pos = -1;
-    }
+    this->suggestions.clear();
 }
 
 /**
@@ -223,23 +217,33 @@ void CoverageTracker::Suggest(uintptr_t src, uintptr_t dst, uint16_t c, int pos)
     const uint32_t byte_to_set = REGULATOR_FUZZ_TRANSFORM_ADDR(src) ^
                             REGULATOR_FUZZ_TRANSFORM_ADDR(dst);
 
-    this->suggestions[byte_to_set].c = c;
-    this->suggestions[byte_to_set].pos = static_cast<uint16_t>(
-        std::min(static_cast<int>(UINT16_MAX), pos)
-    );
+    // see if we already have a suggestion for this component
+    for (size_t i=0; i < this->suggestions.size(); i++)
+    {
+        if (suggestions[i].component == byte_to_set)
+        {
+            return;
+        }
+    }
+
+    struct suggestion sugg;
+    sugg.c = c;
+    sugg.pos = pos;
+    sugg.component = byte_to_set;
+
+    this->suggestions.push_back(sugg);
 }
 
 void CoverageTracker::GetSuggestions(std::vector<struct suggestion> &out, const CoverageTracker *other) const
 {
-    for (size_t i=0; i < MAP_SIZE; i++)
+    for (size_t i=0; i < this->suggestions.size(); i++)
     {
-        if (other->covmap[i] == 0 && this->suggestions[i].pos >= 0)
+        if (other->covmap[this->suggestions[i].component] == 0)
         {
             out.push_back(this->suggestions[i]);
         }
     }
 }
-
 
 size_t CoverageTracker::MemoryFootprint() const
 {

@@ -68,6 +68,9 @@ struct suggestion
     uint16_t c;
     // the suggested position in the string
     int16_t pos;
+    // the index into covmap for the corresponding component
+    // where this modification may lead
+    uint32_t component;
 };
 
 /**
@@ -221,7 +224,7 @@ public:
 
 private:
     cov_t *covmap;
-    struct suggestion *suggestions;
+    std::vector<struct suggestion> suggestions;
     uint64_t total;
     path_hash_t path_hash;
 };

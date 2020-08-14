@@ -1,8 +1,10 @@
 #include "work-queue.hpp"
+#include "../flags.hpp"
 
 #include <vector>
 #include <random>
 #include <iostream>
+#include <iomanip>
 
 namespace regulator
 {
@@ -130,6 +132,11 @@ void Queue<Char>::Fill(Corpus<Char> *corpus)
 
         entry_loop_out:
         ;
+    }
+
+    if (regulator::flags::FLAG_debug)
+    {
+        std::cout << "DEBUG queue fill size: " << this->queue.size() << " / " << corpus->Size() << std::endl;
     }
 
     delete[] index_map;
