@@ -235,29 +235,29 @@ void Corpus<Char>::GenerateChildren(
     size_t buflen = parent->buflen;
 
     // Get the mutation suggestions
-    std::vector<struct suggestion> suggestions;
-    parent->coverage_tracker->GetSuggestions(
-        suggestions
-    );
+    // std::vector<struct suggestion> suggestions;
+    // parent->coverage_tracker->GetSuggestions(
+    //     suggestions
+    // );
 
-    // Shuffle the suggestions using a Fisher-Yates shuffle
-    // BUT stop after the first MAX_SUGGESTIONS slots
-    for (size_t i=0; i + 2 <= std::min(MAX_SUGGESTIONS, suggestions.size()); i++)
-    {
-        size_t j = (static_cast<size_t>(random()) % (suggestions.size() - i)) + i;
-        struct suggestion tmp = suggestions[i];
-        suggestions[i] = suggestions[j];
-        suggestions[j] = tmp;
-    }
+    // // Shuffle the suggestions using a Fisher-Yates shuffle
+    // // BUT stop after the first MAX_SUGGESTIONS slots
+    // for (size_t i=0; i + 2 <= std::min(MAX_SUGGESTIONS, suggestions.size()); i++)
+    // {
+    //     size_t j = (static_cast<size_t>(random()) % (suggestions.size() - i)) + i;
+    //     struct suggestion tmp = suggestions[i];
+    //     suggestions[i] = suggestions[j];
+    //     suggestions[j] = tmp;
+    // }
 
-    for (size_t i=0; i < std::min(MAX_SUGGESTIONS, suggestions.size()); i++)
-    {
-        Char *newbuf = new Char[buflen];
-        memcpy(newbuf, parent->buf, buflen * sizeof(Char));
-        take_a_suggestion(newbuf, buflen, suggestions[i]);
-        out.push_back(newbuf);
-        n_children--;
-    }
+    // for (size_t i=0; i < std::min(MAX_SUGGESTIONS, suggestions.size()); i++)
+    // {
+    //     Char *newbuf = new Char[buflen];
+    //     memcpy(newbuf, parent->buf, buflen * sizeof(Char));
+    //     take_a_suggestion(newbuf, buflen, suggestions[i]);
+    //     out.push_back(newbuf);
+    //     n_children--;
+    // }
 
     for (size_t i = 0; i < n_children; i++)
     {
