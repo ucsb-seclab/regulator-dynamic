@@ -184,7 +184,7 @@ TEST_CASE( "bit-flip will change exactly one bit (1-byte)" )
     {
         memcpy(cpy, subject, sizeof(subject));
 
-        f::bit_flip(cpy, sizeof(subject), 0);
+        f::bit_flip(cpy, sizeof(subject));
 
         size_t popcount = 0;
         for (size_t i=0; i<sizeof(subject); i++)
@@ -206,7 +206,7 @@ TEST_CASE( "bit-flip will change exactly one bit (2-byte)" )
     {
         memcpy(cpy, subject, sizeof(subject));
 
-        f::bit_flip(cpy, sizeof(subject) / 2, 0);
+        f::bit_flip(cpy, sizeof(subject) / 2);
 
         size_t popcount = 0;
         for (size_t i=0; i<sizeof(subject) / 2; i++)

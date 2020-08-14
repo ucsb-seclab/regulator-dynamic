@@ -237,8 +237,7 @@ void Corpus<Char>::GenerateChildren(
     // Get the mutation suggestions
     std::vector<struct suggestion> suggestions;
     parent->coverage_tracker->GetSuggestions(
-        suggestions,
-        this->coverage_upper_bound
+        suggestions
     );
 
     // Shuffle the suggestions using a Fisher-Yates shuffle

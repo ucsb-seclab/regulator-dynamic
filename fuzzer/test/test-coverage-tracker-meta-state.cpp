@@ -6,25 +6,29 @@
 #include "regexp-executor.hpp"
 
 #include "catch.hpp"
+#include <vector>
+#include <iostream>
 
 namespace f = regulator::fuzz;
 namespace e = regulator::executor;
 
 TEST_CASE( "CoverageTracker should report where we would expect the matching rejects / matches [SIMPLE]" )
 {
+    f::CoverageTracker fake_upper_bound;
+
     v8::Isolate *isolate = regulator::executor::Initialize();
     v8::HandleScope scope(isolate);
     v8::Local<v8::Context> ctx = v8::Context::New(isolate);
     ctx->Enter();
 
     e::V8RegExp regexp;
-    e::Result compile_result_status = e::Compile("fo[o]", "", &regexp);
+    e::Result compile_result_status = e::Compile("abcdef.", "", &regexp);
 
     REQUIRE( compile_result_status == e::kSuccess );
     REQUIRE_FALSE( regexp.regexp.is_null() );
 
     e::V8RegExpResult exec_result;
-    std::string subject = "foo";
+    std::string subject = "xxaxcdefxxxxxxxxxxxxxxx";
     e::Result exec_result_status = e::Exec<uint8_t>(
         &regexp,
         reinterpret_cast<const uint8_t *>(subject.c_str()),
@@ -33,21 +37,35 @@ TEST_CASE( "CoverageTracker should report where we would expect the matching rej
     );
 
     REQUIRE( exec_result_status == e::kSuccess );
-    REQUIRE( exec_result.match_success == true );
-    REQUIRE( exec_result.coverage_tracker->FinalCursorPosition() > 0 );
-    REQUIRE( exec_result.coverage_tracker->FinalCursorPosition() < SIZE_MAX );
+    REQUIRE( exec_result.match_success == false );
 
-    e::V8RegExpResult exec_result2;
-    subject = "xxxxxxxxxfooxxxxxxxxxxx";
-    exec_result_status = e::Exec<uint8_t>(
-        &regexp,
-        reinterpret_cast<const uint8_t *>(subject.c_str()),
-        subject.length(),
-        exec_result2
-    );
+    std::vector<f::suggestion> suggestions;
+    exec_result.coverage_tracker->GetSuggestions(suggestions, &fake_upper_bound);
+    REQUIRE( suggestions.size() > 0 );
 
-    REQUIRE( exec_result_status == e::kSuccess );
-    REQUIRE( exec_result2.match_success == true );
-    REQUIRE( exec_result2.coverage_tracker->FinalCursorPosition() > 8 );
-    REQUIRE( exec_result2.coverage_tracker->FinalCursorPosition() < 13 );
+    bool found_expected_suggestion = false;
+
+    for (size_t i=0; i < suggestions.size(); i++)
+    {
+        if (static_cast<char>(suggestions[i].c) == 'b' && suggestions[i].pos == 3)
+        {
+            found_expected_suggestion = true;
+        }
+    }
+
+    REQUIRE( found_expected_suggestion == true );
+
+    // e::V8RegExpResult exec_result2;
+    // subject = "xxxxxxxxxfooxxxxxxxxxxx";
+    // exec_result_status = e::Exec<uint8_t>(
+    //     &regexp,
+    //     reinterpret_cast<const uint8_t *>(subject.c_str()),
+    //     subject.length(),
+    //     exec_result2
+    // );
+
+    // REQUIRE( exec_result_status == e::kSuccess );
+    // REQUIRE( exec_result2.match_success == true );
+    // REQUIRE( exec_result2.coverage_tracker->FinalCursorPosition() > 8 );
+    // REQUIRE( exec_result2.coverage_tracker->FinalCursorPosition() < 13 );
 }

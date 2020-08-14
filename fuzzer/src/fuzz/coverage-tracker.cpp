@@ -234,14 +234,11 @@ void CoverageTracker::Suggest(uintptr_t src, uintptr_t dst, uint16_t c, int pos)
     this->suggestions.push_back(sugg);
 }
 
-void CoverageTracker::GetSuggestions(std::vector<struct suggestion> &out, const CoverageTracker *other) const
+void CoverageTracker::GetSuggestions(std::vector<struct suggestion> &out) const
 {
     for (size_t i=0; i < this->suggestions.size(); i++)
     {
-        if (other->covmap[this->suggestions[i].component] == 0)
-        {
-            out.push_back(this->suggestions[i]);
-        }
+        out.push_back(this->suggestions[i]);
     }
 }
 

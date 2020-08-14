@@ -71,6 +71,35 @@ def main():
         parser.print_help()
         exit(1)
 
+    # figure out the current commit hash
+    git_prog = subprocess.run(
+        [
+            'git',
+            'rev-parse',
+            '--short',
+            'HEAD'
+        ],
+        stdout=subprocess.PIPE,
+        check=True,
+    )
+
+    commit = git_prog.stdout.decode('ascii').strip()
+
+    git_prog2 = subprocess.run(
+        [
+            'git',
+            'status',
+            '--porcelain',
+            '--untracked-files=no'
+        ],
+        stdout=subprocess.PIPE,
+        check=True,
+    )
+
+    print(git_prog2.stdout)
+
+    exit(1)
+
     # Tracks fuzz progress over time on two parallel arrays
     fuzz_progress_past_runs = []
 
@@ -94,13 +123,17 @@ def main():
         if args.debug:
             prog_args.append('--debug')
 
+        print(prog_args)
         prog = subprocess.Popen(
             prog_args,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
 
+        print('started ...')
+
         while prog.poll() is None:
+            print('polling...')
             line = prog.stdout.readline().decode('ascii').strip()
             if line == '':
                 continue

@@ -218,8 +218,7 @@ public:
      * which cover a path already discovered in `other`.
      */
     void GetSuggestions(
-        std::vector<struct suggestion> &out,
-        const CoverageTracker *other
+        std::vector<struct suggestion> &out
     ) const;
 
 private:

@@ -20,7 +20,6 @@ TEST_CASE( "Should construct with sane defaults" )
     REQUIRE_FALSE( cc1.EdgeIsGreater(&cc2, 6) );
     REQUIRE_FALSE( cc1.HasNewPath(&cc2) );
     REQUIRE( cc2.EdgeIsEqual(&cc1, 5) );
-    REQUIRE( cc1.FinalCursorPosition() == SIZE_MAX );
 }
 
 
