@@ -24,7 +24,8 @@ uint64_t Fuzz(
     regulator::executor::V8RegExp *regexp,
     size_t strlen,
     bool fuzz_one_byte = true,
-    bool fuzz_two_byte = true
+    bool fuzz_two_byte = true,
+    uint16_t n_threads = 1
 );
 
 }

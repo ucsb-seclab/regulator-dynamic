@@ -23,11 +23,10 @@ namespace executor
 
 bool _initialized = false;
 
-v8::ArrayBuffer::Allocator *_allocator = nullptr;
-v8::Isolate *isolate = nullptr;
-v8::internal::Isolate *i_isolate = nullptr;
+thread_local v8::Isolate *isolate = nullptr;
+thread_local v8::internal::Isolate *i_isolate = nullptr;
 std::unique_ptr<v8::Platform> platform = nullptr;
-v8::Global<v8::Context> context;
+thread_local v8::Global<v8::Context> context;
 
 /**
  * Initialization requires "argv[0]" -- the program name;
@@ -60,6 +59,25 @@ v8::Isolate *Initialize()
 {
     if (_initialized)
     {
+        if (isolate == nullptr)
+        {
+            // this is a new thread that needs its own isolate
+            v8::ArrayBuffer::Allocator *allocator = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
+            v8::Isolate::CreateParams isolateCreateParams;
+            isolateCreateParams.array_buffer_allocator = allocator;
+            isolate = v8::Isolate::New(isolateCreateParams);
+            isolate->Enter();
+
+            {
+                // this funky business creates a Context which escapes local scope
+                // seen in v8 file: fuzzer-support.cc
+                v8::Isolate::Scope isolate_scope(isolate);
+                v8::HandleScope handle_scope(isolate);
+                context.Reset(isolate, v8::Context::New(isolate));
+            }
+
+            i_isolate = reinterpret_cast<v8::internal::Isolate*>(isolate);
+        }
         return isolate;
     }
     _initialized = true;
@@ -80,10 +98,10 @@ v8::Isolate *Initialize()
     v8::V8::Initialize();
     v8::V8::InitializeExternalStartupData(fake_prog_name.c_str());
 
-    _allocator = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
+    v8::ArrayBuffer::Allocator *allocator = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
 
     v8::Isolate::CreateParams isolateCreateParams;
-    isolateCreateParams.array_buffer_allocator = _allocator;
+    isolateCreateParams.array_buffer_allocator = allocator;
     isolate = v8::Isolate::New(isolateCreateParams);
     isolate->Enter();
     i_isolate = reinterpret_cast<v8::internal::Isolate*>(isolate);
@@ -254,15 +272,18 @@ Result Exec(
     out.match_success = !(o2->IsNull());
     out.coverage_tracker->Bucketize();
 
-    uint64_t pumps = 0;
-    while (v8::platform::PumpMessageLoop(platform.get(), isolate))
-    {
-        pumps++;
-    }
-    if (pumps > 2)
-    {
-        std::cout << "unusual number of pumps: " << pumps << std::endl;
-    }
+    // NOTE: we /could/ do this if we coordinated threads correctly (Pump... requires
+    // a specific thread to run in). HOWEVER it's only useful for running the GC, which
+    // we don't care about.
+    // uint64_t pumps = 0;
+    // while (v8::platform::PumpMessageLoop(platform.get(), isolate))
+    // {
+    //     pumps++;
+    // }
+    // if (pumps > 2)
+    // {
+    //     std::cout << "unusual number of pumps: " << pumps << std::endl;
+    // }
 
     return Result::kSuccess;
 }

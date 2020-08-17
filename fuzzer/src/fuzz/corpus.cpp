@@ -113,13 +113,6 @@ std::string CorpusEntry<Char>::ToString() const
 
 
 template<typename Char>
-size_t CorpusEntry<Char>::MemoryFootprint() const
-{
-    return sizeof(CorpusEntry) + sizeof(Char) * this->buflen + this->coverage_tracker->MemoryFootprint();
-}
-
-
-template<typename Char>
 Corpus<Char>::Corpus()
 {
     this->coverage_upper_bound = new CoverageTracker();
@@ -423,31 +416,6 @@ void Corpus<Char>::FlushGeneration()
     this->new_entries.clear();
 }
 
-
-template<typename Char>
-size_t Corpus<Char>::MemoryFootprint() const
-{
-    size_t ret = 0;
-    ret += sizeof(Corpus);
-    ret += this->coverage_upper_bound->MemoryFootprint();
-
-    for (size_t i=0; i<this->new_entries.size(); i++)
-    {
-        ret += this->new_entries[i]->MemoryFootprint();
-    }
-
-    for (size_t i=0; i<this->flushed_entries.size(); i++)
-    {
-        ret += this->flushed_entries[i]->MemoryFootprint();
-    }
-
-    for (size_t i=0; i<CORPUS_PATH_HASHTABLE_SIZE; i++)
-    {
-        ret += this->hashtable[i].size() * sizeof(this->hashtable[i]) + sizeof(this->hashtable[i][0]);
-    }
-
-    return ret;
-}
 
 template<typename Char>
 inline void Corpus<Char>::SetInteresting(std::vector<Char> *interesting)

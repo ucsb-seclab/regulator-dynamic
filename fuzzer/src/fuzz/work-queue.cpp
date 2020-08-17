@@ -38,7 +38,7 @@ CorpusEntry<Char> *Queue<Char>::Pop()
 }
 
 template<typename Char>
-void Queue<Char>::Fill(Corpus<Char> *corpus)
+void Queue<Char>::Fill(Corpus<Char> &corpus)
 {
     // TODO this could be faster
 
@@ -54,7 +54,7 @@ void Queue<Char>::Fill(Corpus<Char> *corpus)
     memset(represented, 0, MAP_SIZE);
 
     // Step 1: create map from array index to entry index
-    size_t index_map_len = corpus->Size();
+    size_t index_map_len = corpus.Size();
     size_t *index_map = new size_t[index_map_len];
     for (size_t i = 0; i < index_map_len; i++)
     {
@@ -75,7 +75,7 @@ void Queue<Char>::Fill(Corpus<Char> *corpus)
     {
         size_t corpus_entry_index = index_map[i];
 
-        CorpusEntry<Char> *entry = corpus->Get(corpus_entry_index);
+        CorpusEntry<Char> *entry = corpus.Get(corpus_entry_index);
         bool already_selected = false;
 
         // iterate over each component in the perfmap to see if this entry
@@ -89,7 +89,7 @@ void Queue<Char>::Fill(Corpus<Char> *corpus)
             {
                 // this component is not represented, query to determine if
                 // the entry is maximizing
-                if (corpus->MaximizesEdge(entry->GetCoverageTracker(), j))
+                if (corpus.MaximizesEdge(entry->GetCoverageTracker(), j))
                 {
                     // entry is maximizing, select it as a representative
                     this->queue.push_back(entry);
@@ -99,7 +99,7 @@ void Queue<Char>::Fill(Corpus<Char> *corpus)
                     // mark all other components that this maximizes as represented
                     for (size_t k=j; k < MAP_SIZE; k++)
                     {
-                        if (corpus->MaximizesEdge(entry->GetCoverageTracker(), k))
+                        if (corpus.MaximizesEdge(entry->GetCoverageTracker(), k))
                         {
                             size_t rep_idx_second = k / 8;
                             uint8_t rep_mask_second = static_cast<uint8_t>(1) << (k % 8);
@@ -112,7 +112,7 @@ void Queue<Char>::Fill(Corpus<Char> *corpus)
 
         if (!already_selected)
         {
-            uint32_t staleness_score = corpus->GetStalenessScore(entry->GetCoverageTracker());
+            uint32_t staleness_score = corpus.GetStalenessScore(entry->GetCoverageTracker());
 
             if ((random() % MAX_STALENESS_SCORE) >= std::max(staleness_score, MAX_STALENESS_SCORE - MAX_STALENESS_SCORE / 100))
             {
@@ -136,7 +136,7 @@ void Queue<Char>::Fill(Corpus<Char> *corpus)
 
     if (regulator::flags::FLAG_debug)
     {
-        std::cout << "DEBUG queue fill size: " << this->queue.size() << " / " << corpus->Size() << std::endl;
+        std::cout << "DEBUG queue fill size: " << this->queue.size() << " / " << corpus.Size() << std::endl;
     }
 
     delete[] index_map;

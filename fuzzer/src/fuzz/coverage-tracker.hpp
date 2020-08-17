@@ -189,13 +189,6 @@ public:
 
 
     /**
-     * Gets the number of bytes this object and its members
-     * occupy in RAM.
-     */
-    size_t MemoryFootprint() const;
-
-
-    /**
      * Gets the percentage of slots which are non-zero.
      * 
      * Returns a number between 0 and 1, inclusive.

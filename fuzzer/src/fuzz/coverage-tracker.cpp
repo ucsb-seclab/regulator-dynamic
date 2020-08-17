@@ -242,11 +242,6 @@ void CoverageTracker::GetSuggestions(std::vector<struct suggestion> &out) const
     }
 }
 
-size_t CoverageTracker::MemoryFootprint() const
-{
-    return sizeof(CoverageTracker) + sizeof(cov_t) * MAP_SIZE;
-}
-
 double CoverageTracker::Residency() const
 {
     size_t num_occupied_slots = 0;

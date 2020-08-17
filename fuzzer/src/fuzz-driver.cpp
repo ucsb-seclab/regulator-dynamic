@@ -15,6 +15,10 @@
 #include <chrono>
 #include <iostream>
 #include <iomanip>
+#include <mutex>
+#include <condition_variable>
+#include <thread>
+
 
 namespace f = regulator::flags;
 
@@ -23,6 +27,10 @@ namespace regulator
 namespace fuzz
 {
 
+/**
+ * The number of mutant children to produce for each
+ * selected parent
+ */
 static const size_t N_CHILDREN_PER_PARENT = 200;
 
 
@@ -33,11 +41,12 @@ template<typename Char>
 class FuzzCampaign
 {
 public:
-    FuzzCampaign()
-        : corpus(new Corpus<Char>()),
-          executions_since_last_render(0),
+    FuzzCampaign(size_t strlen, regulator::executor::V8RegExp *regexp)
+        : executions_since_last_render(0),
           num_generations(0),
-          work_queue(new Queue<Char>())
+          regexp(regexp),
+          strlen(strlen),
+          last_screen_render(std::chrono::steady_clock::now() - std::chrono::hours(100))
         {};
     ~FuzzCampaign()
     {
@@ -62,9 +71,19 @@ public:
 #endif // REG_PROFILE
 
     /**
+     * The length of the string to fuzz
+     */
+    const size_t strlen;
+
+    /**
+     * The regular expression to fuzz
+     */
+    regulator::executor::V8RegExp *regexp;
+
+    /**
      * The active Corpus for this campaign
      */
-    Corpus<Char> *corpus;
+    Corpus<Char> corpus;
 
     /**
      * The number of regular expression executions which
@@ -80,12 +99,41 @@ public:
     /**
      * The queue of parents to fuzz
      */
-    regulator::fuzz::Queue<Char> *work_queue;
+    regulator::fuzz::Queue<Char> work_queue;
 
     /**
-     * The time at which fuzz work should yield for other work
+     * When the last screen render occurred
      */
-    std::chrono::steady_clock::time_point yield_deadline;
+    std::chrono::steady_clock::time_point last_screen_render;
+};
+
+
+/**
+ * A linked-list element which holds a fuzz campaign description.
+ */
+struct fuzz_campaign_ll {
+    /**
+     * Previous linked-list element
+     */
+    struct fuzz_campaign_ll *prev;
+
+    /**
+     * Next linked-list element
+     */
+    struct fuzz_campaign_ll *next;
+
+    /**
+     * A pointer to either a FuzzCampaign<uint8_t> or a
+     * FuzzCampaign<uint16_t> ... consult `is_one_byte`
+     * to disambiguate.
+     */
+    void *campaign;
+
+    /**
+     * True when this is a 8-bit Char, False when it is
+     * 16-bit Char.
+     */
+    bool is_one_byte;
 };
 
 
@@ -97,81 +145,53 @@ typedef struct {
      * When the fuzzing campaign began
      */
     std::chrono::steady_clock::time_point begin;
+
     /**
      * When the fuzzing campaign must exit
      */
     std::chrono::steady_clock::time_point deadline;
+
     /**
-     * When the last screen render occurred
+     * A linked-list of campaigns to work on
      */
-    std::chrono::steady_clock::time_point last_screen_render;
-    /**
-     * The one-byte campaign details
-     */
-    std::unique_ptr<FuzzCampaign<uint8_t>> campaign_one_byte;
-    /**
-     * The two-byte campaign details
-     */
-    std::unique_ptr<FuzzCampaign<uint16_t>> campaign_two_byte;
+    struct fuzz_campaign_ll *work_ll;
+
+    std::mutex global_mutex;
+
+    std::condition_variable work_ll_waiter;
+
     /**
      * When true, the fuzzing loop should exit as soon as possible
      */
     bool exit_requested;
-} exec_context;
+} fuzz_global_context;
 
 
 /**
- * A work-interrupt point, where we update some meta-information,
- * like rendering output or toggling exit_requested for timeouts
+ * A work-interrupt point for printing status about a
+ * fuzzing campaign.
  */
-inline void work_interrupt(exec_context &ctx)
+template<typename Char>
+inline void work_interrupt(FuzzCampaign<Char> *campaign)
 {
-    // First, re-check for for deadline
-    auto now = std::chrono::steady_clock::now();
-    ctx.exit_requested = now >= ctx.deadline;
-
+    auto now  = std::chrono::steady_clock::now();
     // Print stuff to screen if we haven't done that lately
-    if ((now - ctx.last_screen_render) > std::chrono::milliseconds(500))
+    if ((now - campaign->last_screen_render) > std::chrono::milliseconds(500))
     {
-        auto elapsed = now - ctx.begin;
-        double seconds_elapsed = elapsed.count() / (static_cast<double>(std::nano::den));
 
-        std::cout << "Elapsed: "
-            << std::setprecision(5) << std::setw(4) << seconds_elapsed << " "
-            << std::setw(0) << std::endl;
-
-        auto elapsed_since_last_render = now - ctx.last_screen_render;
+        auto elapsed_since_last_render = now - campaign->last_screen_render;
         double seconds_elapsed_since_last_render = elapsed_since_last_render.count() / (static_cast<double>(std::nano::den));
 
-        if (ctx.campaign_one_byte != nullptr)
-        {
-            FuzzCampaign<uint8_t> *campaign = ctx.campaign_one_byte.get();
-            double execs_per_second = campaign->executions_since_last_render / seconds_elapsed_since_last_render;
-            std::cout << "1-byte summary: "
-                << "Exec/s: "
-                << std::setprecision(5) << std::setw(4) << execs_per_second << " "
-                << std::setw(0)
-                << "Corpus Size: " << campaign->corpus->Size() << " "
-                << "Slowest(1-byte): " << campaign->corpus->MaxOpcount()->ToString()
-                << std::endl;
+        std::ostringstream to_print;
+        to_print << "SUMMARY ";
+        to_print << (sizeof(Char) == 1 ? "1-byte " : "2-byte ");
 
-            campaign->executions_since_last_render = 0;
-        }
-
-        if (ctx.campaign_two_byte != nullptr)
-        {
-            FuzzCampaign<uint16_t> *campaign = ctx.campaign_two_byte.get();
-            double execs_per_second = campaign->executions_since_last_render / seconds_elapsed_since_last_render;
-            std::cout << "2-byte summary: "
-                << "Exec/s: "
-                << std::setprecision(5) << std::setw(4) << execs_per_second << " "
-                << std::setw(0)
-                << "Corpus Size: " << campaign->corpus->Size() << " "
-                << "Slowest(2-byte): " << campaign->corpus->MaxOpcount()->ToString()
-                << std::endl;
-
-            campaign->executions_since_last_render = 0;
-        }
+        double execs_per_second = campaign->executions_since_last_render / seconds_elapsed_since_last_render;
+        to_print << "Exec/s: "
+            << std::setprecision(5) << std::setw(4) << execs_per_second << " "
+            << std::setw(0)
+            << "Corpus Size: " << campaign->corpus.Size() << " "
+            << "Slowest(1-byte): " << campaign->corpus.MaxOpcount()->ToString();
 
 #ifdef REG_PROFILE
         // Print and reset profiling stats. VERY UGLY.
@@ -179,94 +199,39 @@ inline void work_interrupt(exec_context &ctx)
         double seconds_gen_child = 0;
         double seconds_econo = 0;
 
-        if (ctx.campaign_one_byte != nullptr)
-        {
-            seconds_exec += ctx.campaign_one_byte->exec_dur.count()
-                / static_cast<double>(std::nano::den);
-            seconds_gen_child += ctx.campaign_one_byte->gen_child_dur.count()
-                / static_cast<double>(std::nano::den);
-            seconds_econo += ctx.campaign_one_byte->econo_dur.count()
-                / static_cast<double>(std::nano::den);
+        seconds_exec += campaign->exec_dur.count()
+            / static_cast<double>(std::nano::den);
+        seconds_gen_child += campaign->gen_child_dur.count()
+            / static_cast<double>(std::nano::den);
+        seconds_econo += campaign->econo_dur.count()
+            / static_cast<double>(std::nano::den);
 
-            ctx.campaign_one_byte->gen_child_dur =
-                ctx.campaign_one_byte->exec_dur =
-                ctx.campaign_one_byte->econo_dur =
-                    std::chrono::steady_clock::duration::zero();
-        }
+        campaign->gen_child_dur =
+            ctx.campaign_one_byte->exec_dur =
+            ctx.campaign_one_byte->econo_dur =
+                std::chrono::steady_clock::duration::zero();
 
-        if (ctx.campaign_two_byte != nullptr)
-        {
-            seconds_exec += ctx.campaign_two_byte->exec_dur.count()
-                / static_cast<double>(std::nano::den);
-            seconds_gen_child += ctx.campaign_two_byte->gen_child_dur.count()
-                / static_cast<double>(std::nano::den);
-            seconds_econo += ctx.campaign_two_byte->econo_dur.count()
-                / static_cast<double>(std::nano::den);
-
-            ctx.campaign_two_byte->gen_child_dur =
-                ctx.campaign_two_byte->exec_dur =
-                ctx.campaign_two_byte->econo_dur =
-                    std::chrono::steady_clock::duration::zero();
-        }
-
-        std::cout << std::setprecision(7) << std::setw(0)
-                  << "Exec: " << seconds_exec << " "
+        to_print << std::setprecision(7) << std::setw(0)
+                  << "\nPROFILE Exec: " << seconds_exec << " "
                   << "GenChild: " << seconds_gen_child << " "
                   << "Econo: " << seconds_econo << " "
-                  << "Other: " << (seconds_elapsed_since_last_render - (seconds_exec + seconds_gen_child + seconds_econo))
-                  << std::endl;
+                  << "Other: " << (seconds_elapsed_since_last_render - (seconds_exec + seconds_gen_child + seconds_econo));
 #endif
 
         if (f::FLAG_debug)
         {
-            std::cout << "DEBUG corpus mem=";
-
-            // Print memory footprint in more readable units (kb, mb, etc...)
-            size_t mem_footprint = 0;
-            if (ctx.campaign_one_byte != nullptr)
-            {
-                mem_footprint += ctx.campaign_one_byte->corpus->MemoryFootprint();
-            }
-            if (ctx.campaign_two_byte != nullptr)
-            {
-                mem_footprint += ctx.campaign_two_byte->corpus->MemoryFootprint();
-            }
-
-            if (mem_footprint <= 1024)
-            {
-                std::cout << mem_footprint << "b ";
-            }
-            else if (mem_footprint <= 1024 * 1024)
-            {
-                std::cout << (mem_footprint / 1024) << "kb ";
-            }
-            else if (mem_footprint <= 1024 * 1024 * 1024)
-            {
-                std::cout << (mem_footprint / (1024 * 1024)) << "mb ";
-            }
-            else
-            {
-                std::cout << (mem_footprint / (1024 * 1024 * 1024)) << "gb ";
-            }
+            to_print << "\nDEBUG ";
 
             // Print the residency of the upper-bound coverage map
-            if (ctx.campaign_one_byte != nullptr)
-            {
-                double residency_1 = ctx.campaign_one_byte->corpus->Residency() * 100;
-                std::cout << "residency(1-byte)=";
-                std::cout << std::setprecision(4) << std::setw(5) << std::setfill(' ') << residency_1
-                    << "% ";
-            }
-            if (ctx.campaign_two_byte != nullptr)
-            {
-                double residency_2 = ctx.campaign_two_byte->corpus->Residency() * 100;
-                std::cout << "residency(2-byte)=" << residency_2;
-                std::cout << "%";
-            }
-            std::cout << std::setw(0) << std::endl;
+            double residency = campaign->corpus.Residency() * 100;
+            to_print << "residency=";
+            to_print << std::setprecision(4) << std::setw(5) << std::setfill(' ') << residency
+                << "% ";
         }
 
-        ctx.last_screen_render = now;
+        campaign->last_screen_render = now;
+        campaign->executions_since_last_render = 0;
+        std::cout << to_print.str() << std::endl;
     }
 }
 
@@ -276,7 +241,7 @@ inline void work_interrupt(exec_context &ctx)
  */
 template<typename Char>
 inline bool seed_corpus(
-    Corpus<Char> *corpus,
+    Corpus<Char> &corpus,
     regulator::executor::V8RegExp *regexp,
     size_t strlen)
 {
@@ -308,8 +273,64 @@ inline bool seed_corpus(
         new CoverageTracker(*result.coverage_tracker.get())
     );
 
-    corpus->Record(entry);
-    corpus->FlushGeneration();
+    corpus.Record(entry);
+    corpus.FlushGeneration();
+
+    return true;
+}
+
+
+/**
+ * Make a FuzzCampaign object, seed it, and add it to the linked-list
+ * of campaigns.
+ * 
+ * Returns false when creation or seed fails.
+ */
+template <typename Char>
+inline bool make_campaign(
+    struct fuzz_campaign_ll *&head,
+    regulator::executor::V8RegExp *regexp,
+    size_t strlen)
+{
+    FuzzCampaign<Char> *campaign_out = new FuzzCampaign<Char>(strlen, regexp);
+
+    if (!seed_corpus(campaign_out->corpus, regexp, strlen))
+    {
+        std::cerr << "ERROR: failed to seed corpus" << std::endl;
+        return false;
+    }
+
+    std::vector<Char> *interesting = new std::vector<Char>();
+    if (!fuzz::ExtractInteresting(*regexp, *interesting))
+    {
+        std::cerr << "ERROR: failed to extract interesting chars" << std::endl;
+        return false;
+    }
+    campaign_out->corpus.SetInteresting(interesting);
+
+    struct fuzz_campaign_ll *new_elem = new fuzz_campaign_ll;
+    new_elem->campaign = campaign_out;
+    new_elem->is_one_byte = sizeof(Char) == 1;
+    
+    // add the new linked-list elem to the circular linked list
+    if (head == nullptr)
+    {
+        head = new_elem;
+        new_elem->next = new_elem;
+        new_elem->prev = new_elem;
+    }
+    else
+    {
+        //           
+        // +-- new_elem <-----+
+        // |                  |
+        // +---> HEAD ---> <stuff>
+        //
+        new_elem->next = head;
+        new_elem->prev = head->prev;
+        head->prev = new_elem;
+        head->prev->next = new_elem;
+    }
 
     return true;
 }
@@ -322,9 +343,8 @@ inline bool seed_corpus(
  */
 template<typename Char>
 inline void evaluate_child(
-    exec_context &context,
     Char *child,
-    size_t &strlen,
+    size_t strlen,
     regulator::executor::V8RegExp *regexp,
     regulator::executor::V8RegExpResult &result, // share this memory to avoid re-allocing all the time
     FuzzCampaign<Char> *campaign,
@@ -360,13 +380,13 @@ inline void evaluate_child(
         // If this child uncovered new behavior, then add it to new_children
         // (later added to corpus, which assumes ownership)
         if (
-                campaign->corpus->HasNewPath(result.coverage_tracker.get()) &&
-                !campaign->corpus->IsRedundant(result.coverage_tracker.get())
+                campaign->corpus.HasNewPath(result.coverage_tracker.get()) &&
+                !campaign->corpus.IsRedundant(result.coverage_tracker.get())
             )
         {
-            campaign->corpus->BumpStaleness(result.coverage_tracker.get());
+            campaign->corpus.BumpStaleness(result.coverage_tracker.get());
 
-            campaign->corpus->Record(
+            campaign->corpus.Record(
                 new CorpusEntry<Char>(
                     child,
                     strlen,
@@ -388,43 +408,41 @@ inline void evaluate_child(
  * Pass over the given Corpus exactly once
  */
 template<typename Char>
-inline void work_on_corpus(
-    exec_context &context,
-    regulator::executor::V8RegExp *regexp,
-    size_t &strlen,
-    FuzzCampaign<Char> *campaign)
+inline void work_on_campaign(FuzzCampaign<Char> *campaign)
 {
     regulator::executor::V8RegExpResult result;
     std::vector<Char *> children_to_eval;
+    auto yield_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(100);
 
-    for (;std::chrono::steady_clock::now() < campaign->yield_deadline;)
+    while (std::chrono::steady_clock::now() < yield_deadline)
     {
+
         // If we've already fuzzed everything in the queue, flush and
         // re-build the queue
-        if (!campaign->work_queue->HasNext())
+        if (!campaign->work_queue.HasNext())
         {
 #ifdef REG_PROFILE
             std::chrono::steady_clock::time_point econo_start = std::chrono::steady_clock::now();
 #endif
             // record new children into corpus
-            campaign->corpus->FlushGeneration();
+            campaign->corpus.FlushGeneration();
 #ifdef REG_PROFILE
             campaign->econo_dur += (std::chrono::steady_clock::now() - econo_start);
 #endif
 
             campaign->num_generations++;
 
-            campaign->work_queue->Fill(campaign->corpus);
+            campaign->work_queue.Fill(campaign->corpus);
         }
 
-        CorpusEntry<Char> *parent = campaign->work_queue->Pop();
+        CorpusEntry<Char> *parent = campaign->work_queue.Pop();
 
         // Create children
 #ifdef REG_PROFILE
         std::chrono::steady_clock::time_point gen_start = std::chrono::steady_clock::now();
 #endif
         children_to_eval.clear();
-        campaign->corpus->GenerateChildren(
+        campaign->corpus.GenerateChildren(
             parent,
             N_CHILDREN_PER_PARENT,
             children_to_eval
@@ -439,14 +457,94 @@ inline void work_on_corpus(
             Char *child = children_to_eval[j];
 
             evaluate_child<Char>(
-                context,
                 child,
-                strlen,
-                regexp,
+                campaign->strlen,
+                campaign->regexp,
                 result,
                 campaign,
                 parent
             );
+        }
+    }
+}
+
+
+/**
+ * Entry point for a work thread
+ */
+void do_work(fuzz_global_context *context)
+{
+    if (f::FLAG_debug)
+    {
+        std::cout << "DEBUG started thread " << std::this_thread::get_id << std::endl;
+    }
+
+    regulator::executor::Initialize();
+
+    while (context->deadline > std::chrono::steady_clock::now())
+    {
+        // get a campaign to work on
+        struct fuzz_campaign_ll *my_work;
+
+        {
+            std::unique_lock<std::mutex> lock(context->global_mutex);
+
+            while (context->work_ll == nullptr)
+            {
+                context->work_ll_waiter.wait(lock);
+            }
+
+            // take an item off the head
+            my_work = context->work_ll;
+            
+            if (context->work_ll->next == context->work_ll)
+            {
+                // if this is the last thing in the work-list then set null
+                context->work_ll = nullptr;
+            }
+            else
+            {
+                // otherwise just re-rig the linked-list to delete head
+                context->work_ll = context->work_ll->next;
+                context->work_ll->prev = my_work->prev;
+                my_work->prev->next = my_work->next;
+            }
+        }
+
+        // we have our campaign to work on
+        if (my_work->is_one_byte)
+        {
+            auto campaign = reinterpret_cast<regulator::fuzz::FuzzCampaign<uint8_t> *>(my_work->campaign);
+            work_on_campaign<uint8_t>(campaign);
+            work_interrupt(campaign);
+        }
+        else
+        {
+            auto campaign = reinterpret_cast<regulator::fuzz::FuzzCampaign<uint16_t> *>(my_work->campaign);
+            work_on_campaign<uint16_t>(campaign);
+            work_interrupt(campaign);
+        }
+
+        // work completed, put my_work back on the work_ll
+        {
+            std::unique_lock<std::mutex> lock(context->global_mutex);
+
+            if (context->work_ll == nullptr)
+            {
+                context->work_ll = my_work;
+                my_work->next = my_work;
+                my_work->prev = my_work;
+            }
+            else
+            {
+                // put my_work in head->prev
+                my_work->prev = context->work_ll->prev;
+                my_work->next = context->work_ll;
+                context->work_ll->prev->next = my_work;
+                context->work_ll->prev = my_work;
+            }
+
+            context->work_ll_waiter.notify_one();
         }
     }
 }
@@ -457,92 +555,49 @@ uint64_t Fuzz(
     regulator::executor::V8RegExp *regexp,
     size_t strlen,
     bool fuzz_one_byte,
-    bool fuzz_two_byte)
+    bool fuzz_two_byte,
+    uint16_t n_threads)
 {
-    exec_context context;
+    fuzz_global_context context;
 
-    // Set up context (used at work-interrupt points)
     context.begin = std::chrono::steady_clock::now();
     context.deadline = context.begin + std::chrono::seconds(regulator::flags::FLAG_timeout);
-    context.exit_requested = false;
-    context.last_screen_render = context.begin - std::chrono::hours(10000);
+    context.work_ll = nullptr;
 
     if (fuzz_one_byte)
     {
-        context.campaign_one_byte = std::make_unique<FuzzCampaign<uint8_t>>();
-
-        if (!seed_corpus(context.campaign_one_byte->corpus, regexp, strlen))
+        if (!make_campaign<uint8_t>(context.work_ll, regexp, strlen))
         {
             return 0;
         }
-
-        std::vector<uint8_t> *interesting = new std::vector<uint8_t>();
-        if (!fuzz::ExtractInteresting(*regexp, *interesting))
-        {
-            return 0;
-        }
-        context.campaign_one_byte->corpus->SetInteresting(interesting);
-    }
-    else
-    {
-        context.campaign_one_byte = nullptr;
     }
 
     if (fuzz_two_byte)
     {
-        context.campaign_two_byte = std::make_unique<FuzzCampaign<uint16_t>>();
-
-        if (!seed_corpus(context.campaign_two_byte->corpus, regexp, strlen))
+        if (!make_campaign<uint16_t>(context.work_ll, regexp, strlen))
         {
             return 0;
         }
-
-        std::vector<uint16_t> *interesting = new std::vector<uint16_t>();
-        if (!fuzz::ExtractInteresting(*regexp, *interesting))
-        {
-            return 0;
-        }
-        context.campaign_two_byte->corpus->SetInteresting(interesting);
     }
-    else
-    {
-        context.campaign_two_byte = nullptr;
-    }
-
 
     if (f::FLAG_debug)
     {
         std::cout << "DEBUG Baseline established. Proceeding to main work loop." << std::endl;
     }
 
-    // how long we can work on each corpus
+    // how long we can work on each campaign
     constexpr auto work_period = std::chrono::milliseconds(100);
 
-    while (!context.exit_requested)
+    std::vector<std::thread *> work_threads;
+    for (size_t i=0; i < n_threads; i++)
     {
-        if (fuzz_one_byte)
-        {
-            context.campaign_one_byte->yield_deadline = std::chrono::steady_clock::now() + work_period;
-            work_on_corpus(
-                context,
-                regexp,
-                strlen,
-                context.campaign_one_byte.get()
-            );
-            work_interrupt(context);
-        }
+        std::thread *t = new std::thread(do_work, &context);
+        work_threads.push_back(t);
+    }
 
-        if (fuzz_two_byte)
-        {
-            context.campaign_two_byte->yield_deadline = std::chrono::steady_clock::now() + work_period;
-            work_on_corpus(
-                context,
-                regexp,
-                strlen,
-                context.campaign_two_byte.get()
-            );
-            work_interrupt(context);
-        }
+    for (size_t i=0; i < n_threads; i++)
+    {
+        work_threads[i]->join();
     }
 
     return 1;

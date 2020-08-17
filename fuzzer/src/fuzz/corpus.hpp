@@ -49,12 +49,6 @@ public:
 
     ~CorpusEntry();
 
-    /**
-     * Gets the number of bytes this object and its members
-     * occupy in RAM.
-     */
-    size_t MemoryFootprint() const;
-
     inline CoverageTracker *GetCoverageTracker()
     {
         return this->coverage_tracker;
@@ -155,12 +149,6 @@ public:
      * in the corpus for the given execution's trace.
      */
     bool IsRedundant(CoverageTracker *coverage_tracker) const;
-
-    /**
-     * Gets the number of bytes this object and its members
-     * occupy in RAM.
-     */
-    size_t MemoryFootprint() const;
 
     /**
      * Set the "interesting characters" to use during mutation.

@@ -31,7 +31,7 @@ public:
      * NOTE: does not take ownership of the corpus or corpus
      * entries
      */
-    void Fill(Corpus<Char> *corpus);
+    void Fill(Corpus<Char> &corpus);
 
     /**
      * Returns true if the queue is not yet emptied
