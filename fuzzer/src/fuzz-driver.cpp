@@ -328,8 +328,8 @@ inline bool make_campaign(
         //
         new_elem->next = head;
         new_elem->prev = head->prev;
-        head->prev = new_elem;
         head->prev->next = new_elem;
+        head->prev = new_elem;
     }
 
     return true;
@@ -476,7 +476,8 @@ void do_work(fuzz_global_context *context)
 {
     if (f::FLAG_debug)
     {
-        std::cout << "DEBUG started thread " << std::this_thread::get_id << std::endl;
+        std::cout << "DEBUG started thread "
+            << std::hex << std::this_thread::get_id() << std::dec << std::endl;
     }
 
     regulator::executor::Initialize();
@@ -491,6 +492,10 @@ void do_work(fuzz_global_context *context)
 
             while (context->work_ll == nullptr)
             {
+                std::cout << "DEBUG thread "
+                    << std::hex << std::this_thread::get_id() << std::dec
+                    << " waiting"
+                    << std::endl;
                 context->work_ll_waiter.wait(lock);
             }
 
@@ -566,6 +571,11 @@ uint64_t Fuzz(
 
     if (fuzz_one_byte)
     {
+        if (f::FLAG_debug)
+        {
+            std::cout << "DEBUG adding 1-byte campaign for strlen " << std::dec << strlen << std::endl;
+        }
+
         if (!make_campaign<uint8_t>(context.work_ll, regexp, strlen))
         {
             return 0;
@@ -574,19 +584,30 @@ uint64_t Fuzz(
 
     if (fuzz_two_byte)
     {
+        if (f::FLAG_debug)
+        {
+            std::cout << "DEBUG adding 2-byte campaign for strlen " << std::dec << strlen << std::endl;
+        }
+
         if (!make_campaign<uint16_t>(context.work_ll, regexp, strlen))
         {
             return 0;
         }
     }
 
+    // count how many campaigns we have
+    uint16_t num_campaigns = 1;
+    struct fuzz_campaign_ll *curr = context.work_ll;
+    for (; curr->next != context.work_ll; curr = curr->next, num_campaigns++);
+
     if (f::FLAG_debug)
     {
+        std::cout << "DEBUG We have " << std::dec << num_campaigns << " fuzz campaigns" << std::endl;
         std::cout << "DEBUG Baseline established. Proceeding to main work loop." << std::endl;
     }
 
-    // how long we can work on each campaign
-    constexpr auto work_period = std::chrono::milliseconds(100);
+    // More threads than campaigns is meaningless
+    n_threads = std::min(num_campaigns, n_threads);
 
     std::vector<std::thread *> work_threads;
     for (size_t i=0; i < n_threads; i++)
