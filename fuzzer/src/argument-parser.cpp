@@ -25,6 +25,7 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
         ("t,timeout", "Timeout, in number of seconds", cxxopts::value<uint32_t>()->default_value("0"))
         ("s,seed", "Seed for random number generator", cxxopts::value<uint32_t>()->default_value("0"))
         ("w,widths", "Which byte-widths to fuzz: use either 1, 2, or \"1,2\"", cxxopts::value<std::string>()->default_value(""))
+        ("m,threads", "How many threads to use", cxxopts::value<uint16_t>()->default_value("1"))
         ("debug", "Enable debug mode", cxxopts::value<bool>()->default_value("False"))
         ("h,help", "Print help", cxxopts::value<bool>()->default_value("False"));
 
@@ -39,6 +40,7 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
     ret.flags = parsed["flags"].as<std::string>();
     ret.target_regex = parsed["regexp"].as<std::string>();
     ret.strlen = parsed["length"].as<uint32_t>();
+    ret.num_threads = parsed["threads"].as<uint16_t>();
     ret.fuzz_one_byte = true;
     ret.fuzz_two_byte = true;
 

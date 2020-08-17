@@ -43,6 +43,11 @@ public:
     bool fuzz_two_byte;
 
     /**
+     * The number of threads to use
+     */
+    uint16_t num_threads;
+
+    /**
      * Parses command-line arguments
      */
     static ParsedArguments Parse(int argc, char **argv);

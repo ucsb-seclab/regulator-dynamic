@@ -67,7 +67,8 @@ int main(int argc, char* argv[])
         &regexp,
         args.strlen,
         args.fuzz_one_byte,
-        args.fuzz_two_byte
+        args.fuzz_two_byte,
+        args.num_threads
     );
 
     return ~status;
