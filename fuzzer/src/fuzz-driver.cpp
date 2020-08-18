@@ -185,6 +185,7 @@ inline void work_interrupt(FuzzCampaign<Char> *campaign)
         std::ostringstream to_print;
         to_print << "SUMMARY ";
         to_print << (sizeof(Char) == 1 ? "1-byte " : "2-byte ");
+        to_print << "len=" << std::dec << campaign->strlen << " ";
 
         double execs_per_second = campaign->executions_since_last_render / seconds_elapsed_since_last_render;
         to_print << "Exec/s: "
@@ -558,7 +559,7 @@ void do_work(fuzz_global_context *context)
 uint64_t Fuzz(
     v8::Isolate *isolate,
     regulator::executor::V8RegExp *regexp,
-    size_t strlen,
+    std::vector<size_t> &strlens,
     bool fuzz_one_byte,
     bool fuzz_two_byte,
     uint16_t n_threads)
@@ -569,29 +570,32 @@ uint64_t Fuzz(
     context.deadline = context.begin + std::chrono::seconds(regulator::flags::FLAG_timeout);
     context.work_ll = nullptr;
 
-    if (fuzz_one_byte)
+    for (const size_t strlen : strlens)
     {
-        if (f::FLAG_debug)
+        if (fuzz_one_byte)
         {
-            std::cout << "DEBUG adding 1-byte campaign for strlen " << std::dec << strlen << std::endl;
+            if (f::FLAG_debug)
+            {
+                std::cout << "DEBUG adding 1-byte campaign for strlen " << std::dec << strlen << std::endl;
+            }
+
+            if (!make_campaign<uint8_t>(context.work_ll, regexp, strlen))
+            {
+                return 0;
+            }
         }
 
-        if (!make_campaign<uint8_t>(context.work_ll, regexp, strlen))
+        if (fuzz_two_byte)
         {
-            return 0;
-        }
-    }
+            if (f::FLAG_debug)
+            {
+                std::cout << "DEBUG adding 2-byte campaign for strlen " << std::dec << strlen << std::endl;
+            }
 
-    if (fuzz_two_byte)
-    {
-        if (f::FLAG_debug)
-        {
-            std::cout << "DEBUG adding 2-byte campaign for strlen " << std::dec << strlen << std::endl;
-        }
-
-        if (!make_campaign<uint16_t>(context.work_ll, regexp, strlen))
-        {
-            return 0;
+            if (!make_campaign<uint16_t>(context.work_ll, regexp, strlen))
+            {
+                return 0;
+            }
         }
     }
 

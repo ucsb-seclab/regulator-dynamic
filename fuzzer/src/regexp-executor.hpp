@@ -9,6 +9,8 @@
 
 #include <stdint.h>
 #include <memory>
+#include <thread>
+#include <mutex>
 
 #include "src/objects/js-regexp.h"
 #include "fuzz/coverage-tracker.hpp"
@@ -38,12 +40,20 @@ enum EnforceRepresentation {
     kOnlyTwoByte,
 };
 
+struct ThreadLocalV8RegExpMatchInfo
+{
+    struct ThreadLocalV8RegExpMatchInfo *next;
+    v8::internal::Handle<v8::internal::RegExpMatchInfo> match_info;
+    std::thread::id owning_thread;
+};
 
 class V8RegExp {
 public:
     V8RegExp();
 
     v8::internal::Handle<v8::internal::JSRegExp> regexp;
+    struct ThreadLocalV8RegExpMatchInfo *match_infos;
+    std::mutex match_infos_mutex;
 };
 
 class V8RegExpResult {
@@ -68,14 +78,14 @@ v8::Isolate *Initialize();
  * Compiles the given character string (interpreted as utf8) to a regexp, and
  * puts the result in `out`. Returns an indicator of success / failure.
  */
-Result Compile(const char *pattern, const char *flags, V8RegExp *out);
+Result Compile(const char *pattern, const char *flags, V8RegExp *out, uint16_t n_threads = 1);
 
 
 template<typename Char>
 Result Exec(
     V8RegExp *regexp,
     const Char *subject,
-    size_t subject_len,
+    size_t subject_lens,
     V8RegExpResult &out,
     EnforceRepresentation rep = kAnyRepresentation);
 

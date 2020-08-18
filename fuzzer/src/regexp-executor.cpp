@@ -3,6 +3,8 @@
 #include <string>
 #include <iostream>
 #include <memory>
+#include <mutex>
+#include <thread>
 
 #include "v8.h"
 #include "src/execution/isolate.h"
@@ -34,6 +36,10 @@ thread_local v8::Global<v8::Context> context;
  */
 std::string fake_prog_name = "regulator";
 
+/**
+ * Sentinel value for std::thread::id to represent null
+ */
+static const std::thread::id kNullThreadId;
 
 static const char *MY_ZONE_NAME = "MY_ZONE";
 
@@ -124,7 +130,7 @@ v8::Isolate *Initialize()
 }
 
 
-Result Compile(const char *pattern, const char *flags, V8RegExp *out)
+Result Compile(const char *pattern, const char *flags, V8RegExp *out, uint16_t n_threads)
 {
     v8::internal::MaybeHandle<v8::internal::String> maybe_h_pattern = (
         i_isolate->factory()
@@ -164,7 +170,7 @@ Result Compile(const char *pattern, const char *flags, V8RegExp *out)
                 )
     ).ToHandleChecked();
 
-    int capture_count = h_regexp->CaptureCount();
+    const int capture_count = h_regexp->CaptureCount();
     v8::internal::Handle<v8::internal::RegExpMatchInfo> match_info =
         v8::internal::RegExpMatchInfo::New(i_isolate, capture_count);
 
@@ -172,6 +178,19 @@ Result Compile(const char *pattern, const char *flags, V8RegExp *out)
         i_isolate, h_regexp, subject, 0, match_info).ToHandleChecked();
 
     out->regexp = h_regexp;
+
+    // start allocating space for match infos (while, presumably, on main thread ourselves)
+    std::unique_lock<std::mutex> my_lock(out->match_infos_mutex);
+    out->match_infos = nullptr;
+    // note we'll make one extra for the main thread
+    for (size_t i=0; i < n_threads + 1; i++)
+    {
+        struct ThreadLocalV8RegExpMatchInfo *mi = new struct ThreadLocalV8RegExpMatchInfo;
+        mi->match_info = v8::internal::RegExpMatchInfo::New(i_isolate, capture_count);
+        mi->next = out->match_infos;
+        mi->owning_thread = kNullThreadId;
+        out->match_infos = mi;
+    }
 
     return Result::kSuccess;
 }
@@ -250,8 +269,39 @@ Result Exec(
         out.rep_used = kRepTwoByte;
     }
 
-    int capture_count = regexp->regexp->CaptureCount();
-    v8::internal::Handle<v8::internal::RegExpMatchInfo> match_info = i_isolate->factory()->NewRegExpMatchInfo();
+
+    v8::internal::Handle<v8::internal::RegExpMatchInfo> match_info(nullptr);
+    for (struct ThreadLocalV8RegExpMatchInfo *curr = regexp->match_infos;
+         curr != nullptr && match_info.is_null();
+         curr = curr->next)
+    {
+        if (curr->owning_thread == kNullThreadId)
+        {
+            // nobody owns this, claim it for ourselves I guess
+            std::unique_lock<std::mutex> lock(regexp->match_infos_mutex);
+
+            // double-check to avoid a data race
+            if (curr->owning_thread == kNullThreadId)
+            {
+                curr->owning_thread = std::this_thread::get_id();
+            }
+            else
+            {
+                // if we lost the race then start the list iteration over again
+                curr = regexp->match_infos;
+            }
+        }
+        if (curr->owning_thread == std::this_thread::get_id())
+        {
+            match_info = curr->match_info;
+        }
+    }
+    
+    if (match_info.is_null())
+    {
+        std::cerr << "ERROR: bad match_info?" << std::endl;
+        return Result::kCouldNotCompile;
+    }
 
     out.coverage_tracker->Clear();
     v8::internal::Handle<v8::internal::Object> o2 = v8::internal::RegExp::Exec(

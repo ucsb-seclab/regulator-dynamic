@@ -21,7 +21,7 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
     options.add_options()
         ("f,flags", "Regexp flags", cxxopts::value<std::string>()->default_value(""))
         ("r,regexp", "The regexp to fuzz", cxxopts::value<std::string>())
-        ("l,length", "The length of the string buffer to fuzz", cxxopts::value<uint32_t>()->default_value("0"))
+        ("l,lengths", "The length(s) of the string buffer to fuzz, comma-separated", cxxopts::value<std::string>()->default_value("0"))
         ("t,timeout", "Timeout, in number of seconds", cxxopts::value<uint32_t>()->default_value("0"))
         ("s,seed", "Seed for random number generator", cxxopts::value<uint32_t>()->default_value("0"))
         ("w,widths", "Which byte-widths to fuzz: use either 1, 2, or \"1,2\"", cxxopts::value<std::string>()->default_value(""))
@@ -39,13 +39,35 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
 
     ret.flags = parsed["flags"].as<std::string>();
     ret.target_regex = parsed["regexp"].as<std::string>();
-    ret.strlen = parsed["length"].as<uint32_t>();
     ret.num_threads = parsed["threads"].as<uint16_t>();
     ret.fuzz_one_byte = true;
     ret.fuzz_two_byte = true;
 
     regulator::flags::FLAG_timeout = parsed["timeout"].as<uint32_t>();
     regulator::flags::FLAG_debug = parsed["debug"].as<bool>();
+
+    std::string lengths = parsed["lengths"].as<std::string>();
+    size_t next_search_idx = 0;
+    while (next_search_idx != std::string::npos)
+    {
+        size_t next_comma_idx = lengths.find(',', next_search_idx);
+        size_t this_len;
+        if (next_comma_idx == std::string::npos)
+        {
+            std::string s = lengths.substr(next_search_idx);
+            this_len = stoul(s);
+        }
+        else
+        {
+            std::string s = lengths.substr(next_search_idx, next_comma_idx - next_search_idx);
+            this_len = stoul(s);
+        }
+
+        ret.strlens.push_back(this_len);
+
+        // advance past the ','
+        next_search_idx = next_comma_idx == std::string::npos ? std::string::npos : next_comma_idx + 1;
+    }
 
     if (regulator::flags::FLAG_timeout == 0)
     {
@@ -63,12 +85,24 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
         exit(1);
     }
 
-    if (ret.strlen == 0)
+    if (ret.strlens.size() == 0)
     {
-        std::cerr << "ERROR: length was nonzero or missing" << std::endl;
+        std::cerr << "ERROR: lengths was missing" << std::endl;
         std::cerr << std::endl;
         std::cerr << options.help() << std::endl;
         exit(1);
+    }
+
+    // ensure that the lengths are reasonable
+    for (size_t i=0; i < ret.strlens.size(); i++)
+    {
+        if (ret.strlens[i] == 0 || ret.strlens[i] > UINT16_MAX)
+        {
+            std::cerr << "ERROR: the length is not supported: " << ret.strlens[i] << std::endl;
+            std::cerr << std::endl;
+            std::cerr << options.help() << std::endl;
+            exit(1);
+        }
     }
 
     std::string byte_widths = parsed["widths"].as<std::string>();

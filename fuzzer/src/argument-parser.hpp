@@ -8,7 +8,8 @@
 #pragma once
 
 #include <string>
-#include <stdint.h>
+#include <cstdint>
+#include <vector>
 
 namespace regulator
 {
@@ -30,7 +31,7 @@ public:
     /**
      * The string length to fuzz
      */
-    uint32_t strlen;
+    std::vector<size_t> strlens;
 
     /**
      * Whether to fuzz one-byte strings

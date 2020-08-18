@@ -3,6 +3,8 @@
 #include "v8.h"
 #include "regexp-executor.hpp"
 
+#include <vector>
+
 namespace regulator
 {
 namespace fuzz
@@ -22,7 +24,7 @@ namespace fuzz
 uint64_t Fuzz(
     v8::Isolate *isolate,
     regulator::executor::V8RegExp *regexp,
-    size_t strlen,
+    std::vector<size_t> &strlens,
     bool fuzz_one_byte = true,
     bool fuzz_two_byte = true,
     uint16_t n_threads = 1
