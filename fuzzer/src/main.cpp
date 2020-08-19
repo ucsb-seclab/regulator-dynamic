@@ -38,7 +38,7 @@ int main(int argc, char* argv[])
     // Compile the regexp
     regulator::executor::V8RegExp regexp;
     regulator::executor::Result compile_result = regulator::executor::Compile(
-        args.target_regex.c_str(),
+        reinterpret_cast<char *>(args.target_regex),
         args.flags.c_str(),
         &regexp,
         args.num_threads

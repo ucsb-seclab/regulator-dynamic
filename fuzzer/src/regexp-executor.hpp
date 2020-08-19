@@ -75,7 +75,7 @@ public:
 v8::Isolate *Initialize();
 
 /**
- * Compiles the given character string (interpreted as utf8) to a regexp, and
+ * Compiles the given character string (interpreted as null-terminated utf8) to a regexp, and
  * puts the result in `out`. Returns an indicator of success / failure.
  */
 Result Compile(const char *pattern, const char *flags, V8RegExp *out, uint16_t n_threads = 1);

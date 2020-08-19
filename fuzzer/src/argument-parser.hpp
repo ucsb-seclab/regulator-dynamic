@@ -20,9 +20,15 @@ namespace regulator
 class ParsedArguments {
 public:
     /**
-     * The regex to run
+     * The regex to run, as utf8
      */
-    std::string target_regex;
+    uint8_t *target_regex;
+
+    /**
+     * The length of the regex to run (in number of bytes)
+     */
+    size_t target_regex_len;
+
     /**
      * The regex flags
      */

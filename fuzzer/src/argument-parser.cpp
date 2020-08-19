@@ -13,6 +13,38 @@ using namespace std;
 namespace regulator
 {
 
+inline static bool base64_decode(const std::string &in, uint8_t *&out, size_t &outlen) {
+    // adapted from https://stackoverflow.com/a/13935718
+    std::vector<uint8_t> vout;
+
+    std::vector<int> T(256,-1);
+    for (int i=0; i<64; i++) T["ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"[i]] = i; 
+
+    int val=0, valb=-8;
+    for (uint8_t c : in) {
+        if (T[c] == -1) return false;
+        val = (val<<6) + T[c];
+        valb += 6;
+        if (valb>=0) {
+            vout.push_back(char((val>>valb)&0xFF));
+            valb-=8;
+        }
+    }
+
+    out = new uint8_t[vout.size() + 1];
+    for (size_t i=0; i < vout.size(); i++)
+    {
+        out[i] = vout[i];
+    }
+
+    out[vout.size()] = 0;
+
+    outlen = vout.size();
+
+    return true;
+}
+
+
 ParsedArguments ParsedArguments::Parse(int argc, char **argv)
 {
     ParsedArguments ret;
@@ -20,7 +52,8 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
     cxxopts::Options options(argv[0], "Regexp catastrophic backtracking fuzzer");
     options.add_options()
         ("f,flags", "Regexp flags", cxxopts::value<std::string>()->default_value(""))
-        ("r,regexp", "The regexp to fuzz", cxxopts::value<std::string>())
+        ("r,regexp", "The regexp to fuzz, as an ascii string", cxxopts::value<std::string>())
+        ("b,bregexp", "The regexp to fuzz, as a base64 utf8 string", cxxopts::value<std::string>())
         ("l,lengths", "The length(s) of the string buffer to fuzz, comma-separated", cxxopts::value<std::string>()->default_value("0"))
         ("t,timeout", "Timeout, in number of seconds", cxxopts::value<uint32_t>()->default_value("0"))
         ("s,seed", "Seed for random number generator", cxxopts::value<uint32_t>()->default_value("0"))
@@ -37,8 +70,38 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
         exit(0);
     }
 
+    if (parsed["regexp"].count() > 0)
+    {
+        std::string regexp = parsed["regexp"].as<std::string>();
+        uint8_t *buf = new uint8_t[regexp.size() + 1];
+        memcpy(buf, regexp.c_str(), regexp.size());
+        buf[regexp.size()] = '\0';
+        ret.target_regex = buf;
+        ret.target_regex_len = regexp.size();
+    }
+    else if (parsed["bregexp"].count() > 0)
+    {
+        std::string regexp = parsed["bregexp"].as<std::string>();
+        if (!base64_decode(regexp, ret.target_regex, ret.target_regex_len))
+        {
+            std::cerr << "Could not decode base64" << std::endl;
+            std::cerr << std::endl;
+            std::cerr << options.help() << std::endl;
+            exit(1);
+        }
+    }
+    else
+    {
+        std::cerr << "Found neither --regexp nor --bregexp" << std::endl;
+        std::cerr << std::endl;
+        std::cerr << options.help() << std::endl;
+        exit(1);
+    }
+
+    std::string b64_regexp = parsed["regexp"].as<std::string>();
+    base64_decode(b64_regexp, ret.target_regex, ret.target_regex_len);
+
     ret.flags = parsed["flags"].as<std::string>();
-    ret.target_regex = parsed["regexp"].as<std::string>();
     ret.num_threads = parsed["threads"].as<uint16_t>();
     ret.fuzz_one_byte = true;
     ret.fuzz_two_byte = true;
@@ -77,7 +140,7 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
         exit(1);
     }
 
-    if (ret.target_regex.size() == 0)
+    if (ret.target_regex_len == 0)
     {
         std::cerr << "ERROR: regexp is required" << std::endl;
         std::cerr << std::endl;
