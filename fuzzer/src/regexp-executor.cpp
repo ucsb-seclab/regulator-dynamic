@@ -145,8 +145,44 @@ Result Compile(const char *pattern, const char *flags, V8RegExp *out, uint16_t n
         return Result::kNotValidString;
     }
 
-    // TODO make flags useful
     v8::internal::JSRegExp::Flags parsed_flags = v8::internal::JSRegExp::kNone;
+
+    for (; *flags != '\0'; flags++)
+    {
+        char flag = *flags;
+        switch (flag)
+        {
+        case 'G':
+        case 'g':
+            parsed_flags |= v8::internal::JSRegExp::kGlobal;
+            break;
+        case 'I':
+        case 'i':
+            parsed_flags |= v8::internal::JSRegExp::kIgnoreCase;
+            break;
+        case 'M':
+        case 'm':
+            parsed_flags |= v8::internal::JSRegExp::kMultiline;
+            break;
+        case 'S':
+        case 's':
+            parsed_flags |= v8::internal::JSRegExp::kDotAll;
+            break;
+        case 'U':
+        case 'u':
+            parsed_flags |= v8::internal::JSRegExp::kUnicode;
+            break;
+        case 'Y':
+        case 'y':
+            // Ignore this -- for fuzzing we only want to run starting
+            // from position 0; sticky would make for weird re-running
+            // behavior.
+            // parsed_flags |= v8::internal::JSRegExp::kSticky;
+            break;
+        default:
+            return Result::kCouldNotCompile;
+        }
+    }
 
     v8::internal::MaybeHandle<v8::internal::JSRegExp> maybe_h_regexp = (
             v8::internal::JSRegExp::New(i_isolate, h_pattern, parsed_flags)
