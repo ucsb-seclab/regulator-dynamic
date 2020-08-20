@@ -3,3 +3,4 @@ build/
 bin/
 deps/v8
 .gdb_history
+results.sqlite3

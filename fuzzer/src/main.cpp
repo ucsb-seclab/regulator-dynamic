@@ -47,7 +47,7 @@ int main(int argc, char* argv[])
     if (compile_result != regulator::executor::kSuccess)
     {
         std::cerr << "Regexp compilation failed" << std::endl;
-        exit(1);
+        exit(15);
     }
 
     if (f::FLAG_debug)
@@ -65,5 +65,5 @@ int main(int argc, char* argv[])
         args.num_threads
     );
 
-    return ~status;
+    return 0;
 }

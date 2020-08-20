@@ -553,6 +553,11 @@ void do_work(fuzz_global_context *context)
             context->work_ll_waiter.notify_one();
         }
     }
+
+    if (f::FLAG_debug)
+    {
+        std::cout << "DEBUG Time expired in thread" << std::endl;
+    }
 }
 
 
@@ -622,6 +627,11 @@ uint64_t Fuzz(
 
     for (size_t i=0; i < n_threads; i++)
     {
+        if (f::FLAG_debug)
+        {
+            std::cout << "DEBUG Joining thread " << std::hex << i << std::dec << std::endl;
+            std::cout << "\n\n\n\n" << std::endl;
+        }
         work_threads[i]->join();
     }
 

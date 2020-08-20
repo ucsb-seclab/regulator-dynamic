@@ -22,7 +22,7 @@ inline static bool base64_decode(const std::string &in, uint8_t *&out, size_t &o
 
     int val=0, valb=-8;
     for (uint8_t c : in) {
-        if (T[c] == -1) return false;
+        if (T[c] == -1) break;
         val = (val<<6) + T[c];
         valb += 6;
         if (valb>=0) {
@@ -97,9 +97,6 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
         std::cerr << options.help() << std::endl;
         exit(1);
     }
-
-    std::string b64_regexp = parsed["regexp"].as<std::string>();
-    base64_decode(b64_regexp, ret.target_regex, ret.target_regex_len);
 
     ret.flags = parsed["flags"].as<std::string>();
     ret.num_threads = parsed["threads"].as<uint16_t>();
@@ -186,7 +183,7 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
     }
     else
     {
-        std::cout << "ERROR: unknown widths argument: " << byte_widths << std::endl;
+        std::cerr << "ERROR: unknown widths argument: " << byte_widths << std::endl;
         exit(1);
     }
 

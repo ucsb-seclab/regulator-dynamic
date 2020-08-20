@@ -213,6 +213,11 @@ Result Compile(const char *pattern, const char *flags, V8RegExp *out, uint16_t n
     v8::internal::Handle<v8::internal::Object> o2 = v8::internal::RegExp::Exec(
         i_isolate, h_regexp, subject, 0, match_info).ToHandleChecked();
 
+    if (h_regexp->TypeTag() != v8::internal::JSRegExp::IRREGEXP)
+    {
+        return Result::kCouldNotCompile;
+    }
+
     out->regexp = h_regexp;
 
     // start allocating space for match infos (while, presumably, on main thread ourselves)
