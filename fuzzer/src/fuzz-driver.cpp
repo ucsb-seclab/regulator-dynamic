@@ -168,6 +168,13 @@ typedef struct {
     std::chrono::steady_clock::duration individual_timeout;
 
     /**
+     * The number of active (non-quit) fuzz campaigns; used
+     * to indicate when all worker-threads should quit because
+     * no work remains.
+     */
+    size_t n_active_campaigns;
+
+    /**
      * When true, the fuzzing loop should exit as soon as possible
      */
     bool exit_requested;
@@ -509,7 +516,7 @@ void do_work(fuzz_global_context *context)
         {
             std::unique_lock<std::mutex> lock(context->global_mutex);
 
-            while (context->work_ll == nullptr)
+            while (context->work_ll == nullptr && context->n_active_campaigns > 0)
             {
                 std::cout << "DEBUG thread "
                     << std::hex << std::this_thread::get_id() << std::dec
@@ -517,6 +524,13 @@ void do_work(fuzz_global_context *context)
                     << std::endl;
                 context->work_ll_waiter.wait(lock);
             }
+
+            if (context->n_active_campaigns == 0)
+            {
+                // there's no more work to do, quit
+                return;
+            }
+
 
             // take an item off the head
             my_work = context->work_ll;
@@ -577,7 +591,16 @@ void do_work(fuzz_global_context *context)
         }
         else
         {
-            // should_quit_campaign == true
+            // [branch] should_quit_campaign == true
+
+            std::unique_lock<std::mutex> lock(context->global_mutex);
+            context->n_active_campaigns--;
+
+            if (context->n_active_campaigns == 0)
+            {
+                // if there's no more work to do, tell everyone
+                context->work_ll_waiter.notify_all();
+            }
 
             if (my_work->is_one_byte)
             {
@@ -662,32 +685,28 @@ uint64_t Fuzz(
     }
 
     // count how many campaigns we have
-    uint16_t num_campaigns = 1;
+    context.n_active_campaigns = 1;
     struct fuzz_campaign_ll *curr = context.work_ll;
-    for (; curr->next != context.work_ll; curr = curr->next, num_campaigns++);
+    for (; curr->next != context.work_ll; curr = curr->next, context.n_active_campaigns++);
 
     if (f::FLAG_debug)
     {
-        std::cout << "DEBUG We have " << std::dec << num_campaigns << " fuzz campaigns" << std::endl;
+        std::cout << "DEBUG We have " << std::dec << context.n_active_campaigns << " fuzz campaigns" << std::endl;
         std::cout << "DEBUG Baseline established. Proceeding to main work loop." << std::endl;
     }
 
     // More threads than campaigns is meaningless
-    n_threads = std::min(num_campaigns, n_threads);
+    size_t threads_to_make = std::min(context.n_active_campaigns, static_cast<size_t>(n_threads));
 
     std::vector<std::thread *> work_threads;
-    for (size_t i=0; i < n_threads; i++)
+    for (size_t i=0; i < threads_to_make; i++)
     {
         std::thread *t = new std::thread(do_work, &context);
         work_threads.push_back(t);
     }
 
-    for (size_t i=0; i < n_threads; i++)
+    for (size_t i=0; i < work_threads.size(); i++)
     {
-        if (f::FLAG_debug)
-        {
-            std::cout << "DEBUG Joining thread " << std::hex << i << std::dec << std::endl;
-        }
         work_threads[i]->join();
     }
 
