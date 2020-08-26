@@ -60,6 +60,8 @@ int main(int argc, char* argv[])
         isolate,
         &regexp,
         args.strlens,
+        args.timeout_secs,
+        args.individual_timeout_secs,
         args.fuzz_one_byte,
         args.fuzz_two_byte,
         args.num_threads

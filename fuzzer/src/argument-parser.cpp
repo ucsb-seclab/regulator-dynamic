@@ -55,7 +55,8 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
         ("r,regexp", "The regexp to fuzz, as an ascii string", cxxopts::value<std::string>())
         ("b,bregexp", "The regexp to fuzz, as a base64 utf8 string", cxxopts::value<std::string>())
         ("l,lengths", "The length(s) of the string buffer to fuzz, comma-separated", cxxopts::value<std::string>()->default_value("0"))
-        ("t,timeout", "Timeout, in number of seconds", cxxopts::value<uint32_t>()->default_value("0"))
+        ("e,etimeout", "Cease fuzzing of a specific fuzz-length if no progress was made within this many seconds", cxxopts::value<int32_t>())
+        ("t,timeout", "Timeout, in number of seconds", cxxopts::value<int32_t>())
         ("s,seed", "Seed for random number generator", cxxopts::value<uint32_t>()->default_value("0"))
         ("w,widths", "Which byte-widths to fuzz: use either 1, 2, or \"1,2\"", cxxopts::value<std::string>()->default_value(""))
         ("m,threads", "How many threads to use", cxxopts::value<uint16_t>()->default_value("1"))
@@ -103,7 +104,34 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
     ret.fuzz_one_byte = true;
     ret.fuzz_two_byte = true;
 
-    regulator::flags::FLAG_timeout = parsed["timeout"].as<uint32_t>();
+    ret.timeout_secs = -1;
+    if (parsed["timeout"].count() > 0)
+    {
+        ret.timeout_secs = parsed["timeout"].as<int32_t>();
+
+        if (ret.timeout_secs <= 0)
+        {
+            std::cerr << "ERROR: timeout must be positive" << std::endl;
+            std::cerr << std::endl;
+            std::cerr << options.help() << std::endl;
+            exit(1);
+        }
+    }
+
+    ret.individual_timeout_secs = -1;
+    if (parsed["etimeout"].count() > 0)
+    {
+        ret.individual_timeout_secs = parsed["etimeout"].as<int32_t>();
+
+        if (ret.individual_timeout_secs <= 0)
+        {
+            std::cerr << "ERROR: etimeout must be positive" << std::endl;
+            std::cerr << std::endl;
+            std::cerr << options.help() << std::endl;
+            exit(1);
+        }
+    }
+
     regulator::flags::FLAG_debug = parsed["debug"].as<bool>();
 
     std::string lengths = parsed["lengths"].as<std::string>();
@@ -127,14 +155,6 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
 
         // advance past the ','
         next_search_idx = next_comma_idx == std::string::npos ? std::string::npos : next_comma_idx + 1;
-    }
-
-    if (regulator::flags::FLAG_timeout == 0)
-    {
-        std::cerr << "ERROR: timeout is required" << std::endl;
-        std::cerr << std::endl;
-        std::cerr << options.help() << std::endl;
-        exit(1);
     }
 
     if (ret.target_regex_len == 0)

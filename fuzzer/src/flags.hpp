@@ -12,10 +12,6 @@ namespace regulator
 {
 namespace flags
 {
-/**
- * Sets the maximum time to fuzz the regexp program
- */
-extern uint64_t FLAG_timeout;
 
 /**
  * Enables debug output

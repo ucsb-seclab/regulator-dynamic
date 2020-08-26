@@ -55,6 +55,23 @@ public:
     uint16_t num_threads;
 
     /**
+     * Timeout, in number of seconds, for the entire fuzz campaign.
+     * 
+     * -1 indicates no timeout
+     */
+    int32_t timeout_secs;
+
+    /**
+     * Timeout, in number of seconds, for an individual string length.
+     * 
+     * If no progress has been made within this many seconds, give up on
+     * the fuzz campaign.
+     *
+     * -1 indicates no timeout
+     */
+    int32_t individual_timeout_secs;
+
+    /**
      * Parses command-line arguments
      */
     static ParsedArguments Parse(int argc, char **argv);

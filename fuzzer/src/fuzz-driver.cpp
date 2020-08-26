@@ -46,12 +46,11 @@ public:
           num_generations(0),
           regexp(regexp),
           strlen(strlen),
-          last_screen_render(std::chrono::steady_clock::now() - std::chrono::hours(100))
+          last_screen_render(std::chrono::steady_clock::now() - std::chrono::hours(100)),
+          exec_since_last_progress(std::chrono::seconds(0))
         {};
     ~FuzzCampaign()
     {
-        delete this->corpus;
-        delete this->work_queue;
     }
 #ifdef REG_PROFILE
     /**
@@ -69,6 +68,12 @@ public:
      */
     std::chrono::steady_clock::duration econo_dur;
 #endif // REG_PROFILE
+
+    /**
+     * How much active work-time has passed since the last time
+     * the corpus expanded.
+     */
+    std::chrono::steady_clock::duration exec_since_last_progress;
 
     /**
      * The length of the string to fuzz
@@ -159,6 +164,8 @@ typedef struct {
     std::mutex global_mutex;
 
     std::condition_variable work_ll_waiter;
+
+    std::chrono::steady_clock::duration individual_timeout;
 
     /**
      * When true, the fuzzing loop should exit as soon as possible
@@ -284,7 +291,7 @@ inline bool seed_corpus(
 /**
  * Make a FuzzCampaign object, seed it, and add it to the linked-list
  * of campaigns.
- * 
+ *
  * Returns false when creation or seed fails.
  */
 template <typename Char>
@@ -312,7 +319,7 @@ inline bool make_campaign(
     struct fuzz_campaign_ll *new_elem = new fuzz_campaign_ll;
     new_elem->campaign = campaign_out;
     new_elem->is_one_byte = sizeof(Char) == 1;
-    
+
     // add the new linked-list elem to the circular linked list
     if (head == nullptr)
     {
@@ -322,7 +329,7 @@ inline bool make_campaign(
     }
     else
     {
-        //           
+        //
         // +-- new_elem <-----+
         // |                  |
         // +---> HEAD ---> <stuff>
@@ -414,14 +421,15 @@ inline void work_on_campaign(FuzzCampaign<Char> *campaign)
     regulator::executor::V8RegExpResult result;
     std::vector<Char *> children_to_eval;
     auto yield_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(100);
+    auto start_time = std::chrono::steady_clock::now();
 
     while (std::chrono::steady_clock::now() < yield_deadline)
     {
-
         // If we've already fuzzed everything in the queue, flush and
         // re-build the queue
         if (!campaign->work_queue.HasNext())
         {
+            size_t prev_corpus_size = campaign->corpus.Size();
 #ifdef REG_PROFILE
             std::chrono::steady_clock::time_point econo_start = std::chrono::steady_clock::now();
 #endif
@@ -430,6 +438,12 @@ inline void work_on_campaign(FuzzCampaign<Char> *campaign)
 #ifdef REG_PROFILE
             campaign->econo_dur += (std::chrono::steady_clock::now() - econo_start);
 #endif
+            if (prev_corpus_size < campaign->corpus.Size())
+            {
+                // Reset all work-clocks because we added to the corpus and made progress
+                start_time = std::chrono::steady_clock::now();
+                campaign->exec_since_last_progress = std::chrono::seconds(0);
+            }
 
             campaign->num_generations++;
 
@@ -467,6 +481,10 @@ inline void work_on_campaign(FuzzCampaign<Char> *campaign)
             );
         }
     }
+
+    // advance the work-time sum
+    std::chrono::steady_clock::duration work_done = std::chrono::steady_clock::now() - start_time;
+    campaign->exec_since_last_progress += work_done;
 }
 
 
@@ -502,7 +520,7 @@ void do_work(fuzz_global_context *context)
 
             // take an item off the head
             my_work = context->work_ll;
-            
+
             if (context->work_ll->next == context->work_ll)
             {
                 // if this is the last thing in the work-list then set null
@@ -517,22 +535,27 @@ void do_work(fuzz_global_context *context)
             }
         }
 
-        // we have our campaign to work on
+        // we have our campaign to work on, perform one unit of work
+        bool should_quit_campaign;
         if (my_work->is_one_byte)
         {
             auto campaign = reinterpret_cast<regulator::fuzz::FuzzCampaign<uint8_t> *>(my_work->campaign);
             work_on_campaign<uint8_t>(campaign);
             work_interrupt(campaign);
+
+            should_quit_campaign = campaign->exec_since_last_progress > context->individual_timeout;
         }
         else
         {
             auto campaign = reinterpret_cast<regulator::fuzz::FuzzCampaign<uint16_t> *>(my_work->campaign);
             work_on_campaign<uint16_t>(campaign);
             work_interrupt(campaign);
+
+            should_quit_campaign = campaign->exec_since_last_progress > context->individual_timeout;
         }
 
-        // work completed, put my_work back on the work_ll
-        {
+        // work completed, put my_work back on the work_ll ONLY IF WE SHOULD NOT QUIT
+        if (!should_quit_campaign) {
             std::unique_lock<std::mutex> lock(context->global_mutex);
 
             if (context->work_ll == nullptr)
@@ -552,6 +575,19 @@ void do_work(fuzz_global_context *context)
 
             context->work_ll_waiter.notify_one();
         }
+        else
+        {
+            // should_quit_campaign == true
+
+            if (my_work->is_one_byte)
+            {
+                delete reinterpret_cast<regulator::fuzz::FuzzCampaign<uint8_t> *>(my_work->campaign);
+            }
+            else
+            {
+                delete reinterpret_cast<regulator::fuzz::FuzzCampaign<uint16_t> *>(my_work->campaign);
+            }
+        }
     }
 
     if (f::FLAG_debug)
@@ -565,6 +601,8 @@ uint64_t Fuzz(
     v8::Isolate *isolate,
     regulator::executor::V8RegExp *regexp,
     std::vector<size_t> &strlens,
+    int32_t timeout_secs,
+    int32_t individual_timeout_secs,
     bool fuzz_one_byte,
     bool fuzz_two_byte,
     uint16_t n_threads)
@@ -572,8 +610,27 @@ uint64_t Fuzz(
     fuzz_global_context context;
 
     context.begin = std::chrono::steady_clock::now();
-    context.deadline = context.begin + std::chrono::seconds(regulator::flags::FLAG_timeout);
     context.work_ll = nullptr;
+
+    if (timeout_secs > 0)
+    {
+        context.deadline = context.begin + std::chrono::seconds(timeout_secs);
+    }
+    else
+    {
+        // no timeout so just set it to 10 yr
+        context.deadline = context.begin + std::chrono::seconds(60ul * 60ul * 24ul * 365ul * 10ul);
+    }
+
+    if (individual_timeout_secs > 0)
+    {
+        context.individual_timeout = std::chrono::seconds(individual_timeout_secs);
+    }
+    else
+    {
+        // no individual timeout so just set it to 10yr
+        context.individual_timeout = std::chrono::seconds(60ul * 60ul * 24ul * 365ul * 10ul);
+    }
 
     for (const size_t strlen : strlens)
     {
@@ -630,7 +687,6 @@ uint64_t Fuzz(
         if (f::FLAG_debug)
         {
             std::cout << "DEBUG Joining thread " << std::hex << i << std::dec << std::endl;
-            std::cout << "\n\n\n\n" << std::endl;
         }
         work_threads[i]->join();
     }
