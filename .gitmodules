@@ -1,0 +1,3 @@
+[submodule "other_analysis_engines/RegexStaticAnalysis"]
+	path = other_analysis_engines/RegexStaticAnalysis
+	url = https://github.com/robmcl4/RegexStaticAnalysis.git
