@@ -47,7 +47,7 @@ constexpr cov_t COV_MAX = ~static_cast<cov_t>(0);
 /**
  * The number of pc address (least-significant) bits to use.
  */
-const uint32_t MAX_CODE_SIZE = 14;
+const uint32_t MAX_CODE_SIZE = 13;
 
 /**
  * A bitmask for post-shift addresses

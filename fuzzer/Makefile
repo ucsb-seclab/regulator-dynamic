@@ -51,7 +51,7 @@ INCLUDES += -Ideps/murmurhash
 INCLUDES += -Ideps/cxxopts
 INCLUDES += -Ideps/v8/third_party/icu/source/common
 
-CPPFLAGS=-g -pthread -rdynamic -m64 ${DEFINES} ${INCLUDES}
+CPPFLAGS=-g -pthread -rdynamic -m64 -O3 ${DEFINES} ${INCLUDES}
 
 LDFLAGS=
 
