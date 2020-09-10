@@ -47,7 +47,8 @@ public:
           regexp(regexp),
           strlen(strlen),
           last_screen_render(std::chrono::steady_clock::now() - std::chrono::hours(100)),
-          exec_since_last_progress(std::chrono::seconds(0))
+          exec_since_last_progress(std::chrono::seconds(0)),
+          exec_overall(std::chrono::seconds(0))
         {};
     ~FuzzCampaign()
     {
@@ -74,6 +75,11 @@ public:
      * the corpus expanded.
      */
     std::chrono::steady_clock::duration exec_since_last_progress;
+
+    /**
+     * How much active work-time has passed in total.
+     */
+    std::chrono::steady_clock::duration exec_overall;
 
     /**
      * The length of the string to fuzz
@@ -196,6 +202,8 @@ inline void work_interrupt(FuzzCampaign<Char> *campaign)
         auto elapsed_since_last_render = now - campaign->last_screen_render;
         double seconds_elapsed_since_last_render = elapsed_since_last_render.count() / (static_cast<double>(std::nano::den));
 
+        double seconds_elapsed_work_time = campaign->exec_overall.count() / (static_cast<double>(std::nano::den));
+
         std::ostringstream to_print;
         to_print << "SUMMARY ";
         to_print << (sizeof(Char) == 1 ? "1-byte " : "2-byte ");
@@ -206,6 +214,8 @@ inline void work_interrupt(FuzzCampaign<Char> *campaign)
             << std::setprecision(5) << std::setw(4) << execs_per_second << " "
             << std::setw(0)
             << "Corpus Size: " << campaign->corpus.Size() << " "
+            << "Work-Time: "
+            << std::setprecision(7) << std::setw(4) << seconds_elapsed_work_time << " s "
             << "Slowest(1-byte): " << campaign->corpus.MaxOpcount()->ToString();
 
 #ifdef REG_PROFILE
@@ -429,6 +439,7 @@ inline void work_on_campaign(FuzzCampaign<Char> *campaign)
     std::vector<Char *> children_to_eval;
     auto yield_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(100);
     auto start_time = std::chrono::steady_clock::now();
+    auto last_progress_time_this_try = start_time;
 
     while (std::chrono::steady_clock::now() < yield_deadline)
     {
@@ -448,7 +459,7 @@ inline void work_on_campaign(FuzzCampaign<Char> *campaign)
             if (prev_corpus_size < campaign->corpus.Size())
             {
                 // Reset all work-clocks because we added to the corpus and made progress
-                start_time = std::chrono::steady_clock::now();
+                last_progress_time_this_try = std::chrono::steady_clock::now();
                 campaign->exec_since_last_progress = std::chrono::seconds(0);
             }
 
@@ -489,9 +500,12 @@ inline void work_on_campaign(FuzzCampaign<Char> *campaign)
         }
     }
 
-    // advance the work-time sum
+    // advance the work-time sums
+    std::chrono::steady_clock::duration work_done_since_progress = std::chrono::steady_clock::now() - last_progress_time_this_try;
+    campaign->exec_since_last_progress += work_done_since_progress;
+
     std::chrono::steady_clock::duration work_done = std::chrono::steady_clock::now() - start_time;
-    campaign->exec_since_last_progress += work_done;
+    campaign->exec_overall += work_done;
 }
 
 

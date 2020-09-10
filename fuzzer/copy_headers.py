@@ -37,8 +37,9 @@ def main():
         (os.path.join(path, 'deps', 'v8', 'src'), os.path.join('v8', 'src')),
         (os.path.join(path, 'deps', 'v8', 'base'), os.path.join('v8', 'base')),
         (os.path.join(path, 'deps/v8/testing'), 'v8/testing'),
+        (os.path.join(path, 'deps/icu-small'), 'icu-small'),
         (os.path.join(path, 'deps/v8/third_party'), 'v8/third_party'),
-        (os.path.join(path, 'out/Debug/obj/gen/gen/generate-bytecode-output-root/builtins-generated'), os.path.join('v8', 'builtins-generated')),
+        (os.path.join(path, 'out/Debug/obj/gen/generate-bytecode-output-root/builtins-generated'), os.path.join('v8', 'builtins-generated')),
         (os.path.join(path, 'out/Debug/obj/gen/torque-output-root/torque-generated'), os.path.join('v8', 'torque-generated')),
     ]
     dst_v8_path = os.path.join(os.path.dirname(__file__), 'deps/')

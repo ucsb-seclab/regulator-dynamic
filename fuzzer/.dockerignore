@@ -1,3 +1,8 @@
 .git
 build
 env
+k8s
+Dockerfile
+deps/v8
+deps/icu-small
+*.sqlite3

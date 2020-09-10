@@ -2,5 +2,6 @@ env/
 build/
 bin/
 deps/v8
+deps/icu-small
 .gdb_history
 results.sqlite3

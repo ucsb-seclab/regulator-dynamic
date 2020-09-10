@@ -49,26 +49,44 @@ INCLUDES += -Ideps/v8
 INCLUDES += -Ideps/v8/include
 INCLUDES += -Ideps/murmurhash
 INCLUDES += -Ideps/cxxopts
-INCLUDES += -Ideps/v8/third_party/icu/source/common
+INCLUDES += -Ideps/icu-small/source/common
 
 CPPFLAGS=-g -pthread -rdynamic -m64 -O3 ${DEFINES} ${INCLUDES}
 
 LDFLAGS=
 
-V8_DEPS +=  $(BUILDDIR)libicutools.a
-V8_DEPS +=  $(BUILDDIR)libicuucx.a
-V8_DEPS +=  $(BUILDDIR)libv8_base_without_compiler.a # contains regexp stuff to be patched, so we generate this ourselves
-V8_DEPS +=  $(BUILDDIR)node/out/Debug/obj.target/tools/icu/libicudata.a
-V8_DEPS +=  $(BUILDDIR)node/out/Debug/obj.target/tools/icu/libicui18n.a
-V8_DEPS +=  $(BUILDDIR)node/out/Debug/obj.target/libnode.a
-V8_DEPS +=  $(BUILDDIR)node/out/Debug/obj.target/libnode_text_start.a
-V8_DEPS +=  $(BUILDDIR)node/out/Debug/obj.target/tools/v8_gypfiles/libv8_compiler.a
-V8_DEPS +=  $(BUILDDIR)node/out/Debug/obj.target/tools/v8_gypfiles/libv8_initializers.a
-V8_DEPS +=  $(BUILDDIR)node/out/Debug/obj.target/tools/v8_gypfiles/libv8_libsampler.a
-V8_DEPS +=  $(BUILDDIR)node/out/Debug/obj.target/tools/v8_gypfiles/libv8_snapshot.a
-V8_DEPS +=  $(BUILDDIR)node/out/Debug/obj.target/tools/v8_gypfiles/libv8_libbase.a
-V8_DEPS +=  $(BUILDDIR)node/out/Debug/obj.target/tools/v8_gypfiles/libv8_zlib.a
-V8_DEPS +=  $(BUILDDIR)node/out/Debug/obj.target/tools/v8_gypfiles/libv8_libplatform.a
+# The not-patched *.a files from Node that will never be patched
+V8_DEPS_UNPATCHED +=  $(BUILDDIR)node/out/Debug/obj.target/tools/icu/libicudata.a
+V8_DEPS_UNPATCHED +=  $(BUILDDIR)node/out/Debug/obj.target/tools/icu/libicui18n.a
+V8_DEPS_UNPATCHED +=  $(BUILDDIR)node/out/Debug/obj.target/libnode.a
+V8_DEPS_UNPATCHED +=  $(BUILDDIR)node/out/Debug/obj.target/libnode_text_start.a
+V8_DEPS_UNPATCHED +=  $(BUILDDIR)node/out/Debug/obj.target/tools/v8_gypfiles/libv8_compiler.a
+V8_DEPS_UNPATCHED +=  $(BUILDDIR)node/out/Debug/obj.target/tools/v8_gypfiles/libv8_initializers.a
+V8_DEPS_UNPATCHED +=  $(BUILDDIR)node/out/Debug/obj.target/tools/v8_gypfiles/libv8_libsampler.a
+V8_DEPS_UNPATCHED +=  $(BUILDDIR)node/out/Debug/obj.target/tools/v8_gypfiles/libv8_snapshot.a
+V8_DEPS_UNPATCHED +=  $(BUILDDIR)node/out/Debug/obj.target/tools/v8_gypfiles/libv8_libbase.a
+V8_DEPS_UNPATCHED +=  $(BUILDDIR)node/out/Debug/obj.target/tools/v8_gypfiles/libv8_zlib.a
+V8_DEPS_UNPATCHED +=  $(BUILDDIR)node/out/Debug/obj.target/tools/v8_gypfiles/libv8_libplatform.a
+
+# The stuff we need for patching
+V8_DEPS_TO_PATCH += $(BUILDDIR)node/out/Debug/obj.host/tools/icu/libicutools.a
+V8_DEPS_TO_PATCH += $(BUILDDIR)node/out/Debug/obj.target/tools/icu/libicuucx.a
+V8_DEPS_TO_PATCH += $(BUILDDIR)node/out/Debug/obj.target/tools/v8_gypfiles/libv8_base_without_compiler.a
+
+# construct the whole list of v8 deps we need at compile time
+V8_DEPS += $(patsubst %, $(BUILDDIR)node_libs/%, $(notdir $(V8_DEPS_UNPATCHED)))
+V8_DEPS += $(patsubst %, $(BUILDDIR)%, $(notdir $(V8_DEPS_TO_PATCH)))
+
+# the stuff we need to keep around for patching, compilation, etc ...
+V8_DEPS_UNPATCHED_DEST := $(patsubst %, $(BUILDDIR)node_libs/%, $(notdir $(V8_DEPS_UNPATCHED)))
+V8_DEPS_UNPATCHED_DEST += $(patsubst %, $(BUILDDIR)node_libs/%, $(notdir $(V8_DEPS_TO_PATCH)))
+
+# Directories which hold headers copied out of the NodeJS repository
+COPIED_HEADER_DEPS := deps/v8/
+COPIED_HEADER_DEPS += deps/icu-small/
+
+
+# add more
 
 # I chose this commit rather arbitrarily, but I pin it here for stability
 NODE_COMMIT=f645cc73185f1d690e82b01907e2c0da330a26de
@@ -83,37 +101,49 @@ clean:
 	if [ -f $(BUILDDIR)tests ]; then rm -v $(BUILDDIR)tests; fi;
 	if [ -f $(BUILDDIR)libicutools.a ]; then rm -v $(BUILDDIR)libicutools.a; fi;
 	if [ -f $(BUILDDIR)libicuucx.a ]; then rm -v $(BUILDDIR)libicuucx.a; fi;
+	if [ -f $(BUILDDIR)libv8_base_without_compiler.a ]; then rm -v $(BUILDDIR)libv8_base_without_compiler.a; fi;
 	if [ -d $(BUILDDIR)objects ]; then rm -vr $(BUILDDIR)objects; fi;
 	if [ -d $(BUILDDIR)deps ]; then rm -vr $(BUILDDIR)deps; fi;
+	rm build/*.o
 
 .PHONY: test
 test: $(BUILDDIR)tests
 	./$(BUILDDIR)tests -r compact
-
-
-.PHONY: copy_headers
-copy_headers: node
-	./copy_headers.py $(BUILDDIR)node
 
 #
 # Procedures to checkout & make nodejs
 #
 
 .PHONY: node
-node: $(BUILDDIR)node/out/Debug/node
+node: $(V8_DEPS_UNPATCHED_DEST) $(COPIED_HEADER_DEPS)
 
 
+$(V8_DEPS_UNPATCHED_DEST) $(COPIED_HEADER_DEPS): $(BUILDDIR)node/out/Debug/node
+	mkdir -p $(BUILDDIR)node_libs
+	for f in $(V8_DEPS_UNPATCHED) $(V8_DEPS_TO_PATCH) ; do \
+		if [ -f $(BUILDDIR)node_libs/`basename $$f` ]; then rm -v $(BUILDDIR)node_libs/`basename $$f` ; fi ; \
+		ar -t $$f | xargs ar -rcs $(BUILDDIR)node_libs/`basename $$f` ; \
+	done
+	./copy_headers.py $(BUILDDIR)node
+	rm -rf $(BUILDDIR)node/*
+
+
+.SECONDARY: $(BUILDDIR)node/out/Debug/node
 $(BUILDDIR)node/out/Debug/node: $(BUILDDIR)node/config.gypi
 	$(MAKE) -C $(BUILDDIR)node -j4
 
-
+.SECONDARY: $(BUILDDIR)node/config.gypi
 $(BUILDDIR)node/config.gypi: $(BUILDDIR)node/.git
 	cd $(BUILDDIR)node; git checkout ${NODE_COMMIT}; ./configure --debug
 
 
+.SECONDARY: $(BUILDDIR)node/.git
 $(BUILDDIR)node/.git:
-	mkdir -p $(BUILDDIR)
-	cd $(BUILDDIR); git clone https://github.com/nodejs/node.git
+	mkdir -p $(BUILDDIR)node
+	cd $(BUILDDIR)node; git init
+	cd $(BUILDDIR)node; git remote add origin https://github.com/nodejs/node.git
+	cd $(BUILDDIR)node; git fetch origin --depth=1 ${NODE_COMMIT}
+	cd $(BUILDDIR)node; git reset --hard FETCH_HEAD
 
 
 FUZZER_DEPS_CPPS:=$(shell find src -type f -name "*.cpp")
@@ -121,10 +151,9 @@ FUZZER_DEPS_OS:=$(patsubst src/%.cpp, $(BUILDDIR)objects/%.o, $(FUZZER_DEPS_CPPS
 
 FUZZER_DEPS_OS += $(BUILDDIR)murmurhash.o
 
-$(BUILDDIR)fuzzer: $(BUILDDIR)node/out/Debug/node ${FUZZER_DEPS_OS} ${V8_DEPS} $(BUILDDIR)libv8_base_without_compiler.a
+$(BUILDDIR)fuzzer: ${FUZZER_DEPS_OS} $(COPIED_HEADER_DEPS) ${V8_DEPS}
 	mkdir -p build
 	$(CXX) -o $@ ${CPPFLAGS} -Wl,--start-group ${FUZZER_DEPS_OS} -Wl,--end-group -Wl,--start-group ${V8_DEPS} -Wl,--end-group ${LDFLAGS}
-
 
 $(BUILDDIR)objects/%.o: src/%.cpp $(DEPDIR)/%.d | $(DEPDIR)
 	@mkdir -p $(@D)
@@ -146,44 +175,44 @@ $(BUILDDIR)murmurhash.o: deps/murmurhash/murmur3.c deps/murmurhash/murmur3.h
 V8_MOD_DEPS += $(BUILDDIR)regexp-macro-assembler.o
 V8_MOD_DEPS += $(BUILDDIR)regexp-interpreter.o
 V8_MOD_DEPS += $(BUILDDIR)regexp.o
-$(BUILDDIR)libv8_base_without_compiler.a: ${V8_MOD_DEPS} $(BUILDDIR)regexp-macro-assembler.o $(BUILDDIR)node/out/Debug/obj.target/tools/v8_gypfiles/libv8_base_without_compiler.a
+$(BUILDDIR)libv8_base_without_compiler.a: ${V8_MOD_DEPS} $(BUILDDIR)regexp-macro-assembler.o $(BUILDDIR)node_libs/libv8_base_without_compiler.a
 	if [ -f $@ ]; then rm $@; fi;
-	ar -rcsT $(BUILDDIR)libv8_base_without_compiler.a $(BUILDDIR)node/out/Debug/obj.target/tools/v8_gypfiles/libv8_base_without_compiler.a
+	ar -rcsT $(BUILDDIR)libv8_base_without_compiler.a $(BUILDDIR)node_libs/libv8_base_without_compiler.a
 	ar -rsTv $(BUILDDIR)libv8_base_without_compiler.a ${V8_MOD_DEPS}
 
 
 $(BUILDDIR)regexp-interpreter.o: mod/src/regexp/regexp-interpreter.cc mod/src/regexp/regexp-interpreter.h src/fuzz/coverage-tracker.hpp
-	$(CXX) -g -c -o $@ mod/src/regexp/regexp-interpreter.cc '-DV8_EMBEDDED_BUILTINS' '-DV8_GYP_BUILD' '-DV8_TYPED_ARRAY_MAX_SIZE_IN_HEAP=64' '-D__STDC_FORMAT_MACROS' '-DOPENSSL_NO_PINSHARED' '-DOPENSSL_THREADS' '-DV8_TARGET_ARCH_X64' '-DV8_EMBEDDER_STRING="-node.19"' '-DENABLE_DISASSEMBLER' '-DV8_PROMISE_INTERNAL_FIELD_COUNT=1' '-DENABLE_MINOR_MC' '-DV8_INTL_SUPPORT' '-DV8_CONCURRENT_MARKING' '-DV8_ARRAY_BUFFER_EXTENSION' '-DV8_ENABLE_LAZY_SOURCE_POSITIONS' '-DV8_USE_SIPHASH' '-DDISABLE_UNTRUSTED_CODE_MITIGATIONS' '-DV8_WIN64_UNWINDING_INFO' '-DV8_ENABLE_REGEXP_INTERPRETER_THREADED_DISPATCH' '-DV8_SNAPSHOT_COMPRESSION' '-DICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_STATIC' '-DUCONFIG_NO_SERVICE=1' '-DU_ENABLE_DYLOAD=0' '-DU_STATIC_IMPLEMENTATION=1' '-DU_HAVE_STD_STRING=1' '-DUCONFIG_NO_BREAK_ITERATION=0' '-DDEBUG' '-D_DEBUG' '-DV8_ENABLE_CHECKS' '-DOBJECT_PRINT' '-DVERIFY_HEAP' '-DV8_TRACE_MAPS' '-DV8_ENABLE_ALLOCATION_TIMEOUT' '-DV8_ENABLE_FORCE_SLOW_PATH' '-DENABLE_HANDLE_ZAPPING' -Imod -Isrc -Ideps/v8 -I$(BUILDDIR)node/deps/icu-small/source/common -pthread -Wno-unused-parameter -m64 -Wno-return-type -fno-strict-aliasing -m64 -g -Woverloaded-virtual -fdata-sections -ffunction-sections -fno-rtti -fno-exceptions -std=gnu++1y
+	$(CXX) -g -c -o $@ mod/src/regexp/regexp-interpreter.cc '-DV8_EMBEDDED_BUILTINS' '-DV8_GYP_BUILD' '-DV8_TYPED_ARRAY_MAX_SIZE_IN_HEAP=64' '-D__STDC_FORMAT_MACROS' '-DOPENSSL_NO_PINSHARED' '-DOPENSSL_THREADS' '-DV8_TARGET_ARCH_X64' '-DV8_EMBEDDER_STRING="-node.19"' '-DENABLE_DISASSEMBLER' '-DV8_PROMISE_INTERNAL_FIELD_COUNT=1' '-DENABLE_MINOR_MC' '-DV8_INTL_SUPPORT' '-DV8_CONCURRENT_MARKING' '-DV8_ARRAY_BUFFER_EXTENSION' '-DV8_ENABLE_LAZY_SOURCE_POSITIONS' '-DV8_USE_SIPHASH' '-DDISABLE_UNTRUSTED_CODE_MITIGATIONS' '-DV8_WIN64_UNWINDING_INFO' '-DV8_ENABLE_REGEXP_INTERPRETER_THREADED_DISPATCH' '-DV8_SNAPSHOT_COMPRESSION' '-DICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_STATIC' '-DUCONFIG_NO_SERVICE=1' '-DU_ENABLE_DYLOAD=0' '-DU_STATIC_IMPLEMENTATION=1' '-DU_HAVE_STD_STRING=1' '-DUCONFIG_NO_BREAK_ITERATION=0' '-DDEBUG' '-D_DEBUG' '-DV8_ENABLE_CHECKS' '-DOBJECT_PRINT' '-DVERIFY_HEAP' '-DV8_TRACE_MAPS' '-DV8_ENABLE_ALLOCATION_TIMEOUT' '-DV8_ENABLE_FORCE_SLOW_PATH' '-DENABLE_HANDLE_ZAPPING' -Imod -Isrc -Ideps/v8 -Ideps/icu-small/source/common -pthread -Wno-unused-parameter -m64 -Wno-return-type -fno-strict-aliasing -m64 -g -Woverloaded-virtual -fdata-sections -ffunction-sections -fno-rtti -fno-exceptions -std=gnu++1y
 
 
 $(BUILDDIR)regexp-macro-assembler.o: mod/src/regexp/regexp-macro-assembler.cc mod/src/regexp/regexp-macro-assembler.h
-	$(CXX) -g -c '-DV8_EMBEDDED_BUILTINS' '-DV8_GYP_BUILD' '-DV8_TYPED_ARRAY_MAX_SIZE_IN_HEAP=64' '-D__STDC_FORMAT_MACROS' '-DOPENSSL_NO_PINSHARED' '-DOPENSSL_THREADS' '-DV8_TARGET_ARCH_X64' '-DV8_EMBEDDER_STRING="-node.19"' '-DENABLE_DISASSEMBLER' '-DV8_PROMISE_INTERNAL_FIELD_COUNT=1' '-DENABLE_MINOR_MC' '-DV8_INTL_SUPPORT' '-DV8_CONCURRENT_MARKING' '-DV8_ARRAY_BUFFER_EXTENSION' '-DV8_ENABLE_LAZY_SOURCE_POSITIONS' '-DV8_USE_SIPHASH' '-DDISABLE_UNTRUSTED_CODE_MITIGATIONS' '-DV8_WIN64_UNWINDING_INFO' '-DV8_ENABLE_REGEXP_INTERPRETER_THREADED_DISPATCH' '-DV8_SNAPSHOT_COMPRESSION' '-DICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_STATIC' '-DUCONFIG_NO_SERVICE=1' '-DU_ENABLE_DYLOAD=0' '-DU_STATIC_IMPLEMENTATION=1' '-DU_HAVE_STD_STRING=1' '-DUCONFIG_NO_BREAK_ITERATION=0' '-DDEBUG' '-D_DEBUG' '-DV8_ENABLE_CHECKS' '-DOBJECT_PRINT' '-DVERIFY_HEAP' '-DV8_TRACE_MAPS' '-DV8_ENABLE_ALLOCATION_TIMEOUT' '-DV8_ENABLE_FORCE_SLOW_PATH' '-DENABLE_HANDLE_ZAPPING' -Isrc -Imod -Ideps/v8 -I$(BUILDDIR)node/deps/icu-small/source/common -o $@ mod/src/regexp/regexp-macro-assembler.cc
+	$(CXX) -g -c '-DV8_EMBEDDED_BUILTINS' '-DV8_GYP_BUILD' '-DV8_TYPED_ARRAY_MAX_SIZE_IN_HEAP=64' '-D__STDC_FORMAT_MACROS' '-DOPENSSL_NO_PINSHARED' '-DOPENSSL_THREADS' '-DV8_TARGET_ARCH_X64' '-DV8_EMBEDDER_STRING="-node.19"' '-DENABLE_DISASSEMBLER' '-DV8_PROMISE_INTERNAL_FIELD_COUNT=1' '-DENABLE_MINOR_MC' '-DV8_INTL_SUPPORT' '-DV8_CONCURRENT_MARKING' '-DV8_ARRAY_BUFFER_EXTENSION' '-DV8_ENABLE_LAZY_SOURCE_POSITIONS' '-DV8_USE_SIPHASH' '-DDISABLE_UNTRUSTED_CODE_MITIGATIONS' '-DV8_WIN64_UNWINDING_INFO' '-DV8_ENABLE_REGEXP_INTERPRETER_THREADED_DISPATCH' '-DV8_SNAPSHOT_COMPRESSION' '-DICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_STATIC' '-DUCONFIG_NO_SERVICE=1' '-DU_ENABLE_DYLOAD=0' '-DU_STATIC_IMPLEMENTATION=1' '-DU_HAVE_STD_STRING=1' '-DUCONFIG_NO_BREAK_ITERATION=0' '-DDEBUG' '-D_DEBUG' '-DV8_ENABLE_CHECKS' '-DOBJECT_PRINT' '-DVERIFY_HEAP' '-DV8_TRACE_MAPS' '-DV8_ENABLE_ALLOCATION_TIMEOUT' '-DV8_ENABLE_FORCE_SLOW_PATH' '-DENABLE_HANDLE_ZAPPING' -Isrc -Imod -Ideps/v8 -Ideps/icu-small/source/common -o $@ mod/src/regexp/regexp-macro-assembler.cc
 
 
 $(BUILDDIR)regexp.o: mod/src/regexp/regexp.cc mod/src/regexp/regexp.h
-	$(CXX) -g -c '-DV8_EMBEDDED_BUILTINS' '-DV8_GYP_BUILD' '-DV8_TYPED_ARRAY_MAX_SIZE_IN_HEAP=64' '-D__STDC_FORMAT_MACROS' '-DOPENSSL_NO_PINSHARED' '-DOPENSSL_THREADS' '-DV8_TARGET_ARCH_X64' '-DV8_EMBEDDER_STRING="-node.19"' '-DENABLE_DISASSEMBLER' '-DV8_PROMISE_INTERNAL_FIELD_COUNT=1' '-DENABLE_MINOR_MC' '-DV8_INTL_SUPPORT' '-DV8_CONCURRENT_MARKING' '-DV8_ARRAY_BUFFER_EXTENSION' '-DV8_ENABLE_LAZY_SOURCE_POSITIONS' '-DV8_USE_SIPHASH' '-DDISABLE_UNTRUSTED_CODE_MITIGATIONS' '-DV8_WIN64_UNWINDING_INFO' '-DV8_ENABLE_REGEXP_INTERPRETER_THREADED_DISPATCH' '-DV8_SNAPSHOT_COMPRESSION' '-DICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_STATIC' '-DUCONFIG_NO_SERVICE=1' '-DU_ENABLE_DYLOAD=0' '-DU_STATIC_IMPLEMENTATION=1' '-DU_HAVE_STD_STRING=1' '-DUCONFIG_NO_BREAK_ITERATION=0' '-DDEBUG' '-D_DEBUG' '-DV8_ENABLE_CHECKS' '-DOBJECT_PRINT' '-DVERIFY_HEAP' '-DV8_TRACE_MAPS' '-DV8_ENABLE_ALLOCATION_TIMEOUT' '-DV8_ENABLE_FORCE_SLOW_PATH' '-DENABLE_HANDLE_ZAPPING' -Imod -Isrc -Ideps/v8 -I$(BUILDDIR)node/deps/icu-small/source/common -pthread -Wno-unused-parameter -m64 -Wno-return-type -fno-strict-aliasing -m64 -fno-omit-frame-pointer -fdata-sections -ffunction-sections -fno-rtti -fno-exceptions -std=gnu++1y -o $@ mod/src/regexp/regexp.cc
+	$(CXX) -g -c '-DV8_EMBEDDED_BUILTINS' '-DV8_GYP_BUILD' '-DV8_TYPED_ARRAY_MAX_SIZE_IN_HEAP=64' '-D__STDC_FORMAT_MACROS' '-DOPENSSL_NO_PINSHARED' '-DOPENSSL_THREADS' '-DV8_TARGET_ARCH_X64' '-DV8_EMBEDDER_STRING="-node.19"' '-DENABLE_DISASSEMBLER' '-DV8_PROMISE_INTERNAL_FIELD_COUNT=1' '-DENABLE_MINOR_MC' '-DV8_INTL_SUPPORT' '-DV8_CONCURRENT_MARKING' '-DV8_ARRAY_BUFFER_EXTENSION' '-DV8_ENABLE_LAZY_SOURCE_POSITIONS' '-DV8_USE_SIPHASH' '-DDISABLE_UNTRUSTED_CODE_MITIGATIONS' '-DV8_WIN64_UNWINDING_INFO' '-DV8_ENABLE_REGEXP_INTERPRETER_THREADED_DISPATCH' '-DV8_SNAPSHOT_COMPRESSION' '-DICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_STATIC' '-DUCONFIG_NO_SERVICE=1' '-DU_ENABLE_DYLOAD=0' '-DU_STATIC_IMPLEMENTATION=1' '-DU_HAVE_STD_STRING=1' '-DUCONFIG_NO_BREAK_ITERATION=0' '-DDEBUG' '-D_DEBUG' '-DV8_ENABLE_CHECKS' '-DOBJECT_PRINT' '-DVERIFY_HEAP' '-DV8_TRACE_MAPS' '-DV8_ENABLE_ALLOCATION_TIMEOUT' '-DV8_ENABLE_FORCE_SLOW_PATH' '-DENABLE_HANDLE_ZAPPING' -Imod -Isrc -Ideps/v8 -Ideps/icu-small/source/common -pthread -Wno-unused-parameter -m64 -Wno-return-type -fno-strict-aliasing -m64 -fno-omit-frame-pointer -fdata-sections -ffunction-sections -fno-rtti -fno-exceptions -std=gnu++1y -o $@ mod/src/regexp/regexp.cc
 
 
 ICU_MOD_DEPS = $(BUILDDIR)ustrcase.o
 ICU_MOD_DEPS += $(BUILDDIR)unistr_case.o
-$(BUILDDIR)libicutools.a: ${ICU_MOD_DEPS} $(BUILDDIR)node/out/Debug/obj.host/tools/icu/libicutools.a
+$(BUILDDIR)libicutools.a: ${ICU_MOD_DEPS} $(BUILDDIR)node_libs/libicutools.a
 	if [ -f $@ ]; then rm $@; fi;
-	ar -rcsT $(BUILDDIR)libicutools.a $(BUILDDIR)node/out/Debug/obj.host/tools/icu/libicutools.a
+	ar -rcsT $(BUILDDIR)libicutools.a $(BUILDDIR)node_libs/libicutools.a
 	ar -rsTv $(BUILDDIR)libicutools.a ${ICU_MOD_DEPS}
 
 
-$(BUILDDIR)libicuucx.a: ${ICU_MOD_DEPS} $(BUILDDIR)node/out/Debug/obj.target/tools/icu/libicuucx.a
+$(BUILDDIR)libicuucx.a: ${ICU_MOD_DEPS} $(BUILDDIR)node_libs/libicuucx.a
 	if [ -f $@ ]; then rm $@; fi;
-	ar -rcsT $(BUILDDIR)libicuucx.a $(BUILDDIR)node/out/Debug/obj.target/tools/icu/libicuucx.a
+	ar -rcsT $(BUILDDIR)libicuucx.a $(BUILDDIR)node_libs/libicuucx.a
 	ar -rsTv $(BUILDDIR)libicuucx.a ${ICU_MOD_DEPS}
 
 
 $(BUILDDIR)ustrcase.o: mod/ustrcase.cpp mod/unicode/unistr.h
-	$(CXX) -g -c -o $@ '-DV8_DEPRECATION_WARNINGS' '-DV8_IMMINENT_DEPRECATION_WARNINGS' '-D__STDC_FORMAT_MACROS' '-DOPENSSL_NO_PINSHARED' '-DOPENSSL_THREADS' '-DU_COMMON_IMPLEMENTATION=1' '-DU_ATTRIBUTE_DEPRECATED=' '-D_CRT_SECURE_NO_DEPRECATE=' '-DU_STATIC_IMPLEMENTATION=1' '-DUCONFIG_NO_SERVICE=1' '-DU_ENABLE_DYLOAD=0' '-DU_HAVE_STD_STRING=1' '-DUCONFIG_NO_BREAK_ITERATION=0' '-DDEBUG' '-D_DEBUG' '-DV8_ENABLE_CHECKS' -Imod -I$(BUILDDIR)node/deps/icu-small/source/common -pthread -Wall -Wextra -Wno-unused-parameter -m64 -Wno-deprecated-declarations -Wno-strict-aliasing -O0 -fno-exceptions -std=gnu++1y -frtti mod/ustrcase.cpp
+	$(CXX) -g -c -o $@ '-DV8_DEPRECATION_WARNINGS' '-DV8_IMMINENT_DEPRECATION_WARNINGS' '-D__STDC_FORMAT_MACROS' '-DOPENSSL_NO_PINSHARED' '-DOPENSSL_THREADS' '-DU_COMMON_IMPLEMENTATION=1' '-DU_ATTRIBUTE_DEPRECATED=' '-D_CRT_SECURE_NO_DEPRECATE=' '-DU_STATIC_IMPLEMENTATION=1' '-DUCONFIG_NO_SERVICE=1' '-DU_ENABLE_DYLOAD=0' '-DU_HAVE_STD_STRING=1' '-DUCONFIG_NO_BREAK_ITERATION=0' '-DDEBUG' '-D_DEBUG' '-DV8_ENABLE_CHECKS' -Imod -Ideps/icu-small/source/common -pthread -Wall -Wextra -Wno-unused-parameter -m64 -Wno-deprecated-declarations -Wno-strict-aliasing -O0 -fno-exceptions -std=gnu++1y -frtti mod/ustrcase.cpp
 
 
 $(BUILDDIR)unistr_case.o: mod/unistr_case.cpp mod/unicode/unistr.h
-	$(CXX) -g -c -o $@ '-DV8_DEPRECATION_WARNINGS' '-DV8_IMMINENT_DEPRECATION_WARNINGS' '-D__STDC_FORMAT_MACROS' '-DOPENSSL_NO_PINSHARED' '-DOPENSSL_THREADS' '-DU_COMMON_IMPLEMENTATION=1' '-DU_I18N_IMPLEMENTATION=1' '-DU_IO_IMPLEMENTATION=1' '-DU_TOOLUTIL_IMPLEMENTATION=1' '-DU_ATTRIBUTE_DEPRECATED=' '-D_CRT_SECURE_NO_DEPRECATE=' '-DU_STATIC_IMPLEMENTATION=1' '-DUCONFIG_NO_SERVICE=1' '-DU_ENABLE_DYLOAD=0' '-DU_HAVE_STD_STRING=1' '-DUCONFIG_NO_BREAK_ITERATION=0' '-DDEBUG' '-D_DEBUG' '-DV8_ENABLE_CHECKS' -Imod -I$(BUILDDIR)node/deps/icu-small/source/common -pthread -Wall -Wextra -Wno-unused-parameter -m64 -Wno-deprecated-declarations -Wno-strict-aliasing -O0 -fno-exceptions -std=gnu++1y -frtti mod/unistr_case.cpp
+	$(CXX) -g -c -o $@ '-DV8_DEPRECATION_WARNINGS' '-DV8_IMMINENT_DEPRECATION_WARNINGS' '-D__STDC_FORMAT_MACROS' '-DOPENSSL_NO_PINSHARED' '-DOPENSSL_THREADS' '-DU_COMMON_IMPLEMENTATION=1' '-DU_I18N_IMPLEMENTATION=1' '-DU_IO_IMPLEMENTATION=1' '-DU_TOOLUTIL_IMPLEMENTATION=1' '-DU_ATTRIBUTE_DEPRECATED=' '-D_CRT_SECURE_NO_DEPRECATE=' '-DU_STATIC_IMPLEMENTATION=1' '-DUCONFIG_NO_SERVICE=1' '-DU_ENABLE_DYLOAD=0' '-DU_HAVE_STD_STRING=1' '-DUCONFIG_NO_BREAK_ITERATION=0' '-DDEBUG' '-D_DEBUG' '-DV8_ENABLE_CHECKS' -Imod -Ideps/icu-small/source/common -pthread -Wall -Wextra -Wno-unused-parameter -m64 -Wno-deprecated-declarations -Wno-strict-aliasing -O0 -fno-exceptions -std=gnu++1y -frtti mod/unistr_case.cpp
 
 
 TEST_CPPS:=$(shell find test -type f -name "*.cpp")
@@ -191,7 +220,7 @@ TEST_OS:=$(patsubst test/%.cpp, $(BUILDDIR)test/%.o, $(TEST_CPPS))
 TEST_OS_PLUS_FUZZER_DEPS := $(TEST_OS) $(filter-out $(BUILDDIR)objects/main.o, $(FUZZER_DEPS_OS))
 
 
-$(BUILDDIR)tests: ${V8_DEPS} ${TEST_OS_PLUS_FUZZER_DEPS}
+$(BUILDDIR)tests: ${V8_DEPS} $(COPIED_HEADER_DEPS) ${TEST_OS_PLUS_FUZZER_DEPS}
 	@echo ${TEST_OS}
 	$(CXX) -g -o $@ -Itest ${CPPFLAGS} -Wl,--start-group ${TEST_OS_PLUS_FUZZER_DEPS} -Wl,--end-group -Wl,--start-group ${V8_DEPS} -Wl,--end-group
 
