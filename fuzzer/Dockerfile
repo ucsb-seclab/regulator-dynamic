@@ -1,4 +1,4 @@
-FROM ubuntu:18.04
+FROM ubuntu:18.04 AS builder
 
 RUN mkdir -p /opt/regulator
 
@@ -12,8 +12,16 @@ ADD copy_headers.py /opt/regulator/
 
 WORKDIR /opt/regulator
 
-RUN make node
+RUN make node -j
 
 ADD . /opt/regulator
 
-RUN make
+RUN make -j
+
+RUN strip -s -o build/fuzzer_stripped build/fuzzer
+
+FROM ubuntu:18.04
+
+WORKDIR /opt/regulator
+
+COPY --from=builder /opt/regulator/build/fuzzer_stripped .
