@@ -92,7 +92,7 @@ COPIED_HEADER_DEPS += deps/icu-small/
 NODE_COMMIT=f645cc73185f1d690e82b01907e2c0da330a26de
 
 .PHONY: all
-all: $(BUILDDIR)fuzzer
+all: $(BUILDDIR)fuzzer_stripped
 
 
 .PHONY: clean
@@ -130,7 +130,7 @@ $(V8_DEPS_UNPATCHED_DEST) $(COPIED_HEADER_DEPS): $(BUILDDIR)node/out/Debug/node
 
 .SECONDARY: $(BUILDDIR)node/out/Debug/node
 $(BUILDDIR)node/out/Debug/node: $(BUILDDIR)node/config.gypi
-	$(MAKE) -C $(BUILDDIR)node -j4
+	$(MAKE) -C $(BUILDDIR)node -j
 
 .SECONDARY: $(BUILDDIR)node/config.gypi
 $(BUILDDIR)node/config.gypi: $(BUILDDIR)node/.git
@@ -151,9 +151,15 @@ FUZZER_DEPS_OS:=$(patsubst src/%.cpp, $(BUILDDIR)objects/%.o, $(FUZZER_DEPS_CPPS
 
 FUZZER_DEPS_OS += $(BUILDDIR)murmurhash.o
 
+
 $(BUILDDIR)fuzzer: ${FUZZER_DEPS_OS} $(COPIED_HEADER_DEPS) ${V8_DEPS}
 	mkdir -p build
 	$(CXX) -o $@ ${CPPFLAGS} -Wl,--start-group ${FUZZER_DEPS_OS} -Wl,--end-group -Wl,--start-group ${V8_DEPS} -Wl,--end-group ${LDFLAGS}
+
+
+$(BUILDDIR)fuzzer_stripped: $(BUILDDIR)fuzzer
+	strip -s -o $@ $<
+
 
 $(BUILDDIR)objects/%.o: src/%.cpp $(DEPDIR)/%.d | $(DEPDIR)
 	@mkdir -p $(@D)

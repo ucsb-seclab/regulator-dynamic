@@ -18,10 +18,11 @@ ADD . /opt/regulator
 
 RUN make -j
 
-RUN strip -s -o build/fuzzer_stripped build/fuzzer
-
 FROM ubuntu:18.04
 
 WORKDIR /opt/regulator
 
 COPY --from=builder /opt/regulator/build/fuzzer_stripped .
+ADD main.py /opt/regulator
+ADD requirements.txt /opt/regulator
+
