@@ -42,7 +42,7 @@ def claim_one_regexp(db: psycopg2.extensions.connection, my_id: uuid.UUID) -> ty
         """
         SELECT id, pattern, flags
         FROM regexp_work_queue
-        WHERE worker = NULL
+        WHERE worker is NULL
         ORDER BY random()
         LIMIT 1
         FOR UPDATE
@@ -51,7 +51,7 @@ def claim_one_regexp(db: psycopg2.extensions.connection, my_id: uuid.UUID) -> ty
 
     all_results = curr.fetchall()
 
-    if len(all_results) < 0:
+    if len(all_results) <= 0:
         return None
 
     id_, pattern, flags = all_results[0]
@@ -191,8 +191,8 @@ def main():
                 print('Nothing left to fuzz, quitting')
                 break
 
-            id_, pattern, flags = next_regex
-            print(f'Fuzzing #{id_} regexp {pattern} with flags {flags}')
+            regexp_id, pattern, flags = next_regex
+            print(f'Fuzzing #{regexp_id} regexp {pattern} with flags {flags}')
 
             # map from "len-bytewidth" to row id
             ids = {}
@@ -204,27 +204,31 @@ def main():
                         """
                         INSERT INTO analysis_result (regexp_id, strlen, width, maxcost, exec_time)
                         VALUES (%s, %s, %s, %s, INTERVAL %s)
+                        RETURNING id
                         """,
                         (
                             regexp_id,
                             l,
-                            charwidth,
+                            'one' if charwidth == 1 else 'two',
                             0,
                             '0 second'
                         )
                     )
-                    ids[f"{l}-{charwidth}"] = curr.lastrowid
+                    this_id = curr.fetchone()[0]
+                    assert isinstance(this_id, int)
+                    assert this_id > 0
+                    ids[f"{l}-{charwidth}"] = this_id
 
             db.commit()
 
             prog_args = [
-                'build/fuzzer',
+                './fuzzer_stripped',
                 '-m', str(args.threads),
                 '-t', str(args.timeout),
                 '-l', ','.join(map(str, lengths)),
                 '-e', str(args.etimeout),
-                '-b', base64.b64encode(source).decode('ascii'),
-                '-f', flags.decode('ascii'),
+                '-b', base64.b64encode(pattern).decode('ascii'),
+                '-f', bytes(flags).decode('ascii'),
                 '-w', ','.join(map(str, widths)),
             ]
 
@@ -274,6 +278,7 @@ def main():
                     """,
                     (c, witness.encode('ascii'), f"{work_time} second", id_)
                 )
+                assert curr.rowcount > 0
 
                 if time.time() > last_commit + 10:
                     # commit every 10 seconds for good measure
