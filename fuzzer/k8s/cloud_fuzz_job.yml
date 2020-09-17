@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: regulator-postgres-config
+  labels:
+    app: regulator-postgres
+data:
+  POSTGRES_DB: postgresdb
+  POSTGRES_USER: postgresadmin
+  POSTGRES_PASSWORD: aa2fbaff-98da-471c-9a67-19029781eddf
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: regulator-fuzz-job
+spec:
+  parallelism: 5
+  template:
+    metadata:
+      labels:
+        app: regulator-fuzz-job
+    spec:
+      # this affinity prevents same-node scheduling?
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - regulator-fuzz-job
+            topologyKey: "kubernetes.io/hostname"
+      containers:
+      - name: regulator-fuzz-job
+        image: "git.seclab.cs.ucsb.edu:4567/p_nack/regulator:latest"
+        command: ["python3", "main.py", "-p", "192.168.51.64:5433"]
+        envFrom:
+        - configMapRef:
+            name: regulator-postgres-config
+      restartPolicy: Never
+      imagePullSecrets:
+      - name: gitlab-registry
+  backoffLimit: 0

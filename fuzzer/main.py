@@ -166,14 +166,17 @@ def main():
 
     host, port = args.postgres.split(':')
 
+    def db_connect() -> psycopg2.extensions.connection:
+        return psycopg2.connect(
+            user=args.postgres_user,
+            password=args.postgres_password,
+            database=args.postgres_database,
+            host=host,
+            port=port,
+        )
+
     # open the database
-    db: psycopg2.extensions.connection = psycopg2.connect(
-        user=args.postgres_user,
-        password=args.postgres_password,
-        database=args.postgres_database,
-        host=host,
-        port=port,
-    )
+    db = db_connect()
 
     # identify myself uniquely
     my_id = uuid.uuid4()
@@ -188,11 +191,11 @@ def main():
 
             if next_regex is None:
                 # Nothing found left in the database
-                print('Nothing left to fuzz, quitting')
+                print(f'{str(my_id)}: Nothing left to fuzz, quitting')
                 break
 
             regexp_id, pattern, flags = next_regex
-            print(f'Fuzzing #{regexp_id} regexp {pattern} with flags {flags}')
+            print(f'{str(my_id)}: Fuzzing #{regexp_id} regexp {bytes(pattern)} with flags {bytes(flags)}')
 
             # map from "len-bytewidth" to row id
             ids = {}
@@ -234,6 +237,7 @@ def main():
 
             if args.debug:
                 prog_args.append('--debug')
+                print(f'{str(my_id)}: Enabling debug')
 
             prog = subprocess.Popen(
                 prog_args,
@@ -247,10 +251,11 @@ def main():
 
                 if not line.startswith('SUMMARY'):
                     # not interesting line
-                    print(line)
+                    if args.debug:
+                        print(f'{str(my_id)}: {line}')
                     continue
 
-                if random.randint(0, 100) < 10:
+                if args.debug:
                     print(line)
 
                 mat1 = bytewidth_pat.search(line)
@@ -294,6 +299,18 @@ def main():
                     exit(1)
 
             prog.kill()
+
+            # update finish time
+            curr.execute(
+                """
+                UPDATE regexp_work_queue
+                SET time_completed = NOW()::timestamp
+                WHERE id = %s
+                """,
+                (regexp_id,)
+            )
+
+            db.commit()
 
     db.commit()
     db.close()

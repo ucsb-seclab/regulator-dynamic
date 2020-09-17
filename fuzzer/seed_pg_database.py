@@ -60,7 +60,7 @@ def seed(
                 regexp_id    integer NOT NULL REFERENCES regexp_work_queue (id),
                 width        byte_width NOT NULL,
                 strlen       integer NOT NULL,
-                maxcost      integer NOT NULL,
+                maxcost      bigint NOT NULL,
                 witness_utf8 bytea,
                 exec_time    interval
             )
@@ -69,7 +69,7 @@ def seed(
     postgres_db.commit()
 
     sq_curr = sqlite_db.cursor()
-    sq_curr.execute("SELECT id, pattern, flags FROM regexps")
+    sq_curr.execute("SELECT id, pattern, flags FROM regexps ORDER BY random()")
 
     with postgres_db.cursor() as pg_curr:
         pg_curr: psycopg2.extensions.cursor
