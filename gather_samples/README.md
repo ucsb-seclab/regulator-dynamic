@@ -68,7 +68,6 @@ Lists the extracted regular expressions
 | id          | int  | primary key                                                             |
 | pattern     | blob | utf8 binary blob of the regexp pattern                                  |
 | flags       | blob | utf8 binary blob of the regexp flags (in practice this should be ascii) |
-| count       | int  | number of times we've seen this regexp in all of the packages           |
 
 
 #### table `skipped_files`
