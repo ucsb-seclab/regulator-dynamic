@@ -16,52 +16,26 @@ const fetch = require('node-fetch');
 const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
-const sqlite3 = require('sqlite3');
 const ssri = require('ssri');
 const tar = require('tar');
 const moment = require('moment');
 const AbortController = require('abort-controller');
+const yargs = require('yargs');
+const { exit } = require('process');
+const { Client } = require('pg');
+const { Console } = require('console');
 
-/**
- * Gets the YYYY-MM-DD of the start of last month.
- *
- * So, for example, if today is 2020-08-21, this will
- * return 2020-07-01
- *
- * @returns {string}
- */
-function getLastMonthStart()
-{
-  return moment().startOf('month').subtract({days: 1}).startOf('month').format('YYYY-MM-DD');
-}
-
-/**
- * Gets the YYYY-MM-DD of the end of last month.
- *
- * So, for example, if today is 2020-08-21, this will
- * return 2020-07-31
- *
- * @returns {string}
- */
-function getLastMonthEnd()
-{
-  const now = moment();
-  const yr = now.year;
-  const mo = now.month;
-
-  return moment().startOf('month').subtract({days: 1}).endOf('month').format('YYYY-MM-DD');
-}
 
 /**
  * Gets the absolute path to the locally cached package manifest
  * for the given package name.
  *
+ * @param {string} baseDir
  * @param {string} packageName
  * @returns {string}
  */
-function getManifestPath(packageName) {
-  const basePath = path.resolve(__dirname, './manifests');
-  return path.join(basePath, `${encodeURIComponent(packageName)}.json`);
+function getManifestPath(baseDir, packageName) {
+  return path.join(baseDir, `${encodeURIComponent(packageName)}.json`);
 }
 
 
@@ -71,100 +45,6 @@ function getManifestPath(packageName) {
  */
 function resolveAfter(ms) {
   return new Promise((resolve) => setTimeout(() => resolve(), ms));
-}
-
-
-/**
- * Opens and returns the sqlite database.
- *
- * If the schema is not initialized, performs that initialization.
- *
- * @return {import('sqlite3').Database}
- */
-function openDatabase() {
-  const dbPath = path.resolve(path.join(__dirname, 'database.sqlite3'));
-  const db = new sqlite3.Database(dbPath);
-
-  db.serialize(() => {
-    db.run(`
-            CREATE TABLE IF NOT EXISTS last_registry_update (
-                timestamp INTEGER NOT NULL
-            )
-        `);
-    db.run(`
-            CREATE TABLE IF NOT EXISTS package (
-                id TEXT NOT NULL,
-                key TEXT NOT NULL,
-                revision TEXT NOT NULL
-            )
-        `);
-    db.run(`
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_package_id ON package (id)
-        `);
-    db.run(`
-            CREATE TABLE IF NOT EXISTS package_downloads (
-                package_id TEXT NOT NULL,
-                start TEXT NOT NULL,
-                end TEXT NOT NULL,
-                downloads INTEGER
-            )
-        `);
-    db.run(`
-            CREATE TABLE IF NOT EXISTS package_version (
-              id INTEGER PRIMARY KEY,
-              package_id TEXT NOT NULL,
-              version TEXT NOT NULL,
-              integrity TEXT NOT NULL,
-              sha1 TEXT NOT NULL
-            )
-        `);
-    db.run(`
-            CREATE TABLE IF NOT EXISTS regexps (
-              id INTEGER PRIMARY KEY,
-              pattern BLOB NOT NULL,
-              flags BLOB NOT NULL
-            )
-        `);
-    db.run(`
-            CREATE INDEX IF NOT EXISTS idx_regexps_pattern ON regexps (pattern);
-        `);
-    db.run(`
-            CREATE TABLE IF NOT EXISTS skipped_files (
-              package_version_id INTEGER NOT NULL,
-              file_name TEXT NOT NULL
-            )
-        `);
-    db.run(`
-            CREATE TABLE IF NOT EXISTS regexp_files (
-              id INTEGER PRIMARY KEY,
-              regexps_id INTEGER NOT NULL,
-              package_version_id INTEGER NOT NULL,
-              file_path TEXT NOT NULL,
-              line_no_start INTEGER NOT NULL,
-              line_no_end INTEGER NOT NULL,
-              column_no_start INTEGER NOT NULL,
-              column_no_end INTEGER NOT NULL
-            )
-        `);
-    db.run(`
-            CREATE INDEX IF NOT EXISTS idx_regexps_files_regexps_id ON regexp_files (regexps_id);
-        `);
-  });
-  return db;
-}
-
-
-let globalDb = null;
-/**
- * Gets the sqlite database, or opens a new one if one does
- * not yet exist.
- * @return {import('sqlite3').Database}
- */
-function getDatabase() {
-  if (globalDb === null) {
-    globalDb = openDatabase();
-  }
-  return globalDb;
 }
 
 
@@ -233,47 +113,46 @@ async function getAllPackages() {
  * Gets and stores (in the database) the list of all npm packages.
  */
 async function getAndStorePackageListing() {
+  const db = await getDatabase();
+
+  // If there's any packages just assume we've done the download already
+  const { rows: [{count}] } = await db.query('SELECT COUNT(*) FROM package');
+  const numPackages = parseInt(count);
+
+  if (numPackages !== 0)
+  {
+    console.log('Found package table full, skipping download');
+    return;
+  }
+
   const packages = await getAllPackages();
-  const db = getDatabase();
-  db.serialize(() => {
-    db.run('begin transaction');
-    const stmt = db.prepare('INSERT INTO package (id, key, revision) VALUES (?,?,?)');
 
-    let numSaved = 0;
-    packages.forEach(({ id, key, value: { rev } }) => {
-      stmt.run(id, key, rev);
-      if (numSaved % 1000 === 0) {
-        console.log(numSaved);
-      }
-      numSaved += 1;
-    });
+  console.log(`got ${packages.length} packages, inserting...`);
 
-    stmt.finalize();
+  await db.query('BEGIN TRANSACTION');
 
-    db.run('INSERT INTO last_registry_update (timestamp) VALUES (?)', [Math.floor(+new Date())]);
+  const progressBar = new cliProgress.SingleBar({}, cliProgress.Presets.shades_classic);
+  progressBar.start(packages.length, 0);
 
-    db.run('commit');
-  });
-}
+  for (let i=0; i < Math.ceil(packages.length / 1000); i++)
+  {
+    const iStart = i * 1000;
+    const iEnd = i * 1000 + 999;
+    const toInsert = packages.slice(iStart, iEnd + 1);
+    await Promise.all(toInsert.map(({ id, key, value: { rev } }) => {
+      return db.query(
+        'INSERT INTO package (id, key, revision) VALUES ($1,$2,$3)',
+        [id, key, rev]
+      );
+    }));
+    progressBar.increment(toInsert.length);
+  }
 
+  await db.query('COMMIT');
 
-/**
- * Returns `true` if the cached package repository is
- * less than 14 days old.
- *
- * @returns {Promise<boolean>} true when the repository is up to date
- */
-function isPackageListingUpToDate() {
-  return new Promise((resolve, reject) => {
-    const daysInMillis = 1000 * 60 * 60 * 24 * 14;
-    const db = getDatabase();
-    db.all('select timestamp from last_registry_update limit 1', (err, rows) => {
-      if (err) {
-        reject(err);
-      }
-      resolve(rows.length > 0 && rows[0].timestamp + daysInMillis > (+new Date()));
-    });
-  });
+  progressBar.stop();
+  
+  console.log(`committed ${packages.length} package rows`);
 }
 
 
@@ -282,28 +161,35 @@ function isPackageListingUpToDate() {
  *
  * VERY SLOW.
  */
-async function getAndStorePackageDownloads() {
+async function getAndStorePackageDownloads(start, end) {
   const progressBar = new cliProgress.SingleBar({}, cliProgress.Presets.shades_classic);
-  const db = getDatabase();
-  const start = getLastMonthStart();
-  const end = getLastMonthEnd();
+  const db = await getDatabase();
+
+  console.log('Getting list of package counts to query');
 
   // Get the list of packages we need to query
   /** @type {[string]} */
-  const packageIds = await new Promise((resolve, reject) => {
-    db.serialize(() => {
-      db.all(`
-                    SELECT id
-                        FROM package
-                        WHERE id not in (SELECT package_id FROM package_downloads WHERE start = ? AND end = ?)
-                `,
+  const packageIds = await (async () => {
+    const { rows } = await db.query(
+      'SELECT p.id \
+        FROM package p \
+        LEFT JOIN (select * from package_downloads where start_dt = $1 AND end_dt = $2) pd \
+          ON p.id = pd.package_id \
+        WHERE pd.package_id is null \
+      ',
       [start, end],
-      (err, rows) => {
-        if (err) setTimeout(() => reject(err), 0);
-        else setTimeout(() => resolve(rows.map(({ id }) => id)), 0);
-      });
-    });
-  });
+    );
+    return rows.map(({ id }) => id);
+  })();
+
+  // exit early if there's nothing to be done here
+  if (packageIds.length === 0)
+  {
+    console.log('No packages need download counts queried');
+    return;
+  }
+
+  console.log(`found ${packageIds.length} that need package counts queried`);
 
   let insertsSinceCommit = 0;
   // async request processing loop
@@ -354,6 +240,7 @@ async function getAndStorePackageDownloads() {
       }
     }
 
+    // great we got the json successfully
     const packageDownloadCounts = packagesToQuery.length === 1
       ? (() => {
         if (json.error && json.error.indexOf('not found') > 0) {
@@ -375,8 +262,7 @@ async function getAndStorePackageDownloads() {
           // this is set when the package was deleted (?) so just ignore it
           return { package: packageName, downloads: 0 };
         } if (!json[packageName]) {
-          console.log(`could not find package ${packageName}`)
-          throw new Error(`could not find package '${packageName}'`);
+          throw new Error(`could not find package ${packageName}`);
         }
         let numDownloads = 0;
         json[packageName].downloads.forEach(({ downloads }) => {
@@ -385,18 +271,17 @@ async function getAndStorePackageDownloads() {
         return { package: packageName, downloads: numDownloads };
       });
 
-    const stmt = db.prepare('INSERT INTO package_downloads (package_id, start, end, downloads) VALUES (?,?,?,?)');
+    // const stmt = db.prepare('INSERT INTO package_downloads (package_id, start, end, downloads) VALUES (?,?,?,?)');
     for (const { package: packageName, downloads } of packageDownloadCounts) {
-      await new Promise((resolve, reject) => {
-        stmt.run([packageName, start, end, downloads], (err) => (err ? reject(err) : resolve()));
-      });
+      await db.query(
+        'INSERT INTO package_downloads (package_id, "start_dt", "end_dt", downloads) VALUES ($1,$2,$3,$4)',
+        [packageName, start, end, downloads]
+      );
       insertsSinceCommit += 1;
     }
-    stmt.finalize();
 
     if (committer && insertsSinceCommit >= 5000) {
-      await runSql('commit');
-      await runSql('begin transaction');
+      await db.query('COMMIT; BEGIN TRANSACTION;');
       insertsSinceCommit = 0;
     }
 
@@ -418,14 +303,14 @@ async function getAndStorePackageDownloads() {
     console.log('fetching download rates for packages');
     progressBar.start(notScopedPackageIds.length, 0);
 
-    await runSql('begin transaction');
+    await db.query('BEGIN TRANSACTION');
 
     await Promise.all([
       processMorePackages(notScopedPackageIds, 128),
       processMorePackages(notScopedPackageIds, 128, true),
     ]);
 
-    await runSql('commit');
+    await db.query('COMMIT');
 
     progressBar.stop();
   }
@@ -434,7 +319,7 @@ async function getAndStorePackageDownloads() {
     console.log('fetching download rates for scoped packages (SLOW)');
     progressBar.start(scopedPackageIds.length, 0);
 
-    await runSql('begin transaction');
+    await db.query('BEGIN TRANSACTION');
 
     await Promise.all([
       processMorePackages(scopedPackageIds, 1),
@@ -444,7 +329,7 @@ async function getAndStorePackageDownloads() {
       processMorePackages(scopedPackageIds, 1, true),
     ]);
 
-    await runSql('commit');
+    await db.query('COMMIT');
 
     progressBar.stop();
   }
@@ -457,43 +342,64 @@ async function getAndStorePackageDownloads() {
  *
  * @return {Promise}
  */
-async function getAndStorePackageManifests() {
+async function getAndStorePackageManifests(outputDir) {
   const numPackages = 10000;
-  const db = getDatabase();
-  const basePath = path.resolve(__dirname, './manifests');
+  const db = await getDatabase();
+  const basePath = path.resolve(outputDir, './manifests');
   const progressBar = new cliProgress.SingleBar({}, cliProgress.Presets.shades_classic);
 
-  if (!await new Promise((resolve) => fs.exists(basePath, resolve))) {
-    await fs.promises.mkdir(basePath);
+  try
+  {
+    await fs.promises.stat(basePath);
+  }
+  catch (e)
+  {
+    if (e.code === 'ENOENT')
+    {
+      console.log(`creating path ${basePath}`);
+      await fs.promises.mkdir(basePath);
+    }
+    else
+    {
+      throw e;
+    }
   }
 
   // determine which package ids to query for
   /** @type {[{package_id: string}]} */
-  const ids = await new Promise((resolve, reject) => {
-    db.all(
-      'SELECT package_id FROM package_downloads ORDER BY downloads DESC LIMIT ?',
-      numPackages,
-      (err, rows) => {
-        if (err) {
-          setTimeout(() => reject(err), 0);
-        } else {
-          setTimeout(() => resolve(rows), 0);
-        }
-      },
-    );
-  });
+  const { rows: ids } = await db.query(
+    'SELECT package_id FROM package_downloads ORDER BY downloads DESC LIMIT $1',
+    [numPackages]
+  );
 
+  console.log('determining which packages need manifests downloaded');
   // figure out which ids we already know about
   const idsMaybeHaveManifest = await Promise.all(
-    ids.map(({ package_id: packageId }) => new Promise((resolve) => {
-      const manifestPath = getManifestPath(packageId);
-      fs.exists(manifestPath, (exists) => resolve({ packageId, exists, manifestPath }));
-    })),
+    ids.map(async ({ package_id: packageId }) => {
+      const manifestPath = getManifestPath(basePath, packageId);
+      let exists = true;
+      try {
+        await fs.promises.stat(manifestPath);
+      }
+      catch (e)
+      {
+          if (e.code === 'ENOENT')
+          {
+            exists = false;
+          }
+          else
+          {
+            throw e;
+          }
+      }
+      return { packageId, exists, manifestPath };
+    }),
   );
 
   const idsWithoutManifest = idsMaybeHaveManifest.filter(({ exists }) => !exists);
 
   if (idsWithoutManifest.length === 0) {
+    console.log('All manifests have been downloaded');
     return;
   }
 
@@ -524,12 +430,16 @@ async function getAndStorePackageManifests() {
         );
 
         // save the file!
-        const dest = fs.createWriteStream(manifestPath);
+        const dest = fs.createWriteStream(manifestPath + '.tmp');
         resp.body.pipe(dest);
         await new Promise((resolve, reject) => {
           resp.body.on('end', resolve);
           resp.body.on('error', (err) => reject(err));
         });
+
+        // file has been downloaded, remove the .tmp extension
+        await fs.promises.rename(manifestPath + '.tmp', manifestPath);
+        break;
       } catch (e) {
         if (e.name === 'AbortError' || e.type === 'aborted') {
           // expected -- this is a timeout
@@ -572,10 +482,12 @@ async function getAndStorePackageManifests() {
 
 
 /**
- * Downloads the latest release tarball for the given package.
+ * Downloads the latest release tarball for the given package, or the
+ * version stored in the `package_version` table, if present.
  *
  * Returns details about the finished download.
  *
+ * @param {string} outputDir the output directory
  * @param {string} packageName the unique package id (should match a downloaded manifest)
  * @returns {Promise<{
  *    packageName: string,
@@ -584,13 +496,40 @@ async function getAndStorePackageManifests() {
  *    integrity: string,
  *    sha1: string}>}
  */
-async function downloadPackageLatest(packageName) {
-  const manifestPath = getManifestPath(packageName);
+async function downloadPackage(outputDir, packageName) {
+  const manifestBasePath = path.resolve(outputDir, './manifests');
+  const db = await getDatabase();
 
-  if (!await new Promise((resolve) => fs.exists(manifestPath, resolve))) {
-    throw new Error(`could not find manifest for ${packageName}`);
+  // see if we have a target version for this recorded in the database already
+  // (we do this to support restoring downloaded file directory if deleted)
+  const { rows: existingVersionRows } = await db.query(
+    'SELECT version, integrity, sha1 FROM package_version WHERE package_id = $1',
+    [packageName]
+  );
+
+  if (existingVersionRows.length > 1)
+  {
+    // this is unexpected; we should only have _at most_ one result
+    throw new Error(`Multiple package versions found for ${packageName}.`)
   }
 
+  const manifestPath = getManifestPath(manifestBasePath, packageName);
+
+  // sanity check for existence of manifest
+  try
+  {
+    await fs.promises.stat(manifestPath);
+  }
+  catch (e)
+  {
+    if (e.code === 'ENOENT')
+    {
+      throw new Error(`could not find manifest for ${packageName}`);
+    }
+    throw e;
+  }
+
+  // parse the json & sanity check
   const content = await fs.promises.readFile(manifestPath, { encoding: 'utf8' });
   const json = JSON.parse(content);
 
@@ -598,14 +537,21 @@ async function downloadPackageLatest(packageName) {
     throw new Error(`no active dists found for ${packageName}`);
   }
 
-  if (!json['dist-tags'].latest) {
-    throw new Error(`could not find 'latest' dist-tag for ${packageName}`);
+  if (existingVersionRows.length === 0)
+  {
+    // we'll need to use the 'latest' tag to determine which to download
+    if (!json['dist-tags'].latest) {
+      throw new Error(`could not find 'latest' dist-tag for ${packageName}`);
+    }
   }
 
-  const version = json['dist-tags'].latest;
+  const version =
+    existingVersionRows.length === 1
+      ? existingVersionRows[0].version
+      : json['dist-tags'].latest;
 
   if (!json.versions) {
-    throw new Error(`could not find list of versions for ${packageName}`);
+    throw new Error(`could not find dict of versions for ${packageName}`);
   }
 
   if (!json.versions[version]) {
@@ -629,16 +575,16 @@ async function downloadPackageLatest(packageName) {
   // set up the directory structure where the the tarball will be downloaded
   const tarballName = path.basename(new URL(tarballUrl).pathname);
   const tarballDestBasePath = path.resolve(
-    __dirname,
+    outputDir,
     'tarballs',
-    `${encodeURIComponent(packageName)}_${encodeURIComponent(version)}`,
+    `${encodeURIComponent(packageName)}_${encodeURIComponent(version)}.tmp`,
   );
 
   await fs.promises.mkdir(tarballDestBasePath, { recursive: true });
 
   // download that tarball
 
-  const tarballDestPath = path.join(tarballDestBasePath, tarballName);
+  const tarballDestPath = path.join(tarballDestBasePath, tarballName + '.tmp');
 
   const resp = await fetch(
     tarballUrl,
@@ -683,18 +629,123 @@ async function downloadPackageLatest(packageName) {
     fd.pipe(hash);
   });
 
+  // if the tarball doesn't match what we expected, throw an error
+  // because that seems wrong
+  if (existingVersionRows.length === 1 && sha1 !== existingVersionRows[0].sha1)
+  {
+    throw new Error(`SHA1 did not match expectation for package ${packageName}:${version}`);
+  }
+
   // delete the tarball (no reason to keep it)
   await fs.promises.unlink(tarballDestPath);
 
+  // move the directory into place
+  const tarballDestBasePathPermanent = path.resolve(
+    outputDir,
+    'tarballs',
+    `${encodeURIComponent(packageName)}_${encodeURIComponent(version)}`,
+  );
+  await fs.promises.rename(tarballDestBasePath, tarballDestBasePathPermanent);
+
   return {
     packageName,
-    packagePath: tarballDestBasePath,
+    packagePath: tarballDestBasePathPermanent,
     version,
     sha1,
     integrity,
   };
 }
 
+/**
+ * Downloads and extracts the package contents of the top 10,000 most downloaded
+ * packages.
+ * 
+ * Assumes manifests for these packages are already downloaded.
+ * 
+ * @param {string} outputDir 
+ */
+async function downloadAllPackages(outputDir) {
+  const db = await getDatabase();
+
+  const { rows: package_ids } = await db.query(
+    ' \
+      SELECT pd.package_id, pv.version \
+      FROM package_downloads pd \
+      LEFT JOIN package_version pv \
+        ON pd.package_id = pv.package_id \
+      ORDER BY downloads DESC LIMIT $1',
+    [10000]
+  );
+
+  // figure out how many of these we need to download
+  const packagesDownloaded = await Promise.all(
+    package_ids.map(async ({package_id, version}) => {
+      // if we don't know what version we need, assume we need to download it
+      if (!version)
+      {
+        return {package_id, need_download: true};
+      }
+
+      // construct the directory we expect to see
+      try
+      {
+        await fs.promises.stat(path.resolve(
+          outputDir,
+          'tarballs',
+          `${encodeURIComponent(package_id)}_${encodeURIComponent(version)}`
+        ));
+      }
+      catch (e)
+      {
+        if (e.code === 'ENOENT')
+        {
+          return {package_id, need_download: true};
+        }
+        throw e;
+      }
+
+      return {package_id, need_download: false};
+    })
+  );
+
+  const packagesNeedingDownload = packagesDownloaded.filter(x => x.need_download);
+
+  console.log(`Found ${packagesNeedingDownload.length} packages to download`);
+
+  const progressBar = new cliProgress.SingleBar(
+    { etaBuffer: 20 },
+    cliProgress.Presets.shades_classic,
+  );
+
+  progressBar.start(packagesNeedingDownload.length, 0);
+
+  async function downloadMore()
+  {
+    if (packagesNeedingDownload.length === 0)
+    {
+      return;
+    }
+
+    const { package_id } = packagesNeedingDownload.pop();
+    const result = await downloadPackage(outputDir, package_id);
+
+    progressBar.increment();
+
+    await db.query(
+      'INSERT INTO package_version (package_id, version, integrity, sha1) VALUES ($1,$2,$3,$4)',
+      [package_id, result.version, result.integrity, result.sha1]
+    );
+
+    // wait a bit for cool-down
+    await resolveAfter(500 + Math.random() * 500);
+    await downloadMore();
+  }
+
+  await Promise.all([
+    downloadMore(),
+    downloadMore(),
+  ]);
+}
 
 /**
  * Recursively examine `sourcesDir` for javascript files, and extract all
@@ -1072,11 +1123,215 @@ async function buildRegexpDb() {
 
 
 // ---------- main ---------------
+const argv = yargs
+  .scriptName('gather-npm-samples')
+  .options({
+    'start-date': {
+      alias: 's',
+      type: 'string',
+      description: 'The start of the download-count window, YYYY-MM-DD',
+      demandOption: true,
+    },
+    'end-date': {
+      alias: 'e',
+      type: 'string',
+      description: 'The end of the download-count window, YYYY-MM-DD',
+      demandOption: true,
+    },
+    'output-dir': {
+      alias: 'o',
+      type: 'string',
+      description: 'The directory to place manifests and module contents',
+      demandOption: true,
+    },
+    'pg-host': {
+      type: 'string',
+      description: 'The hostname of the postgres server to store metadata.\nDefault: $POSTGRES_HOST',
+    },
+    'pg-port': {
+      type: 'integer',
+      description: 'The port number of the postgres server.\nDefault: $POSTGRES_PORT',
+    },
+    'pg-database': {
+      type: 'string',
+      description: 'The postgres database to access.\nDefault: $POSTGRES_DB',
+    },
+    'pg-user': {
+      type: 'string',
+      description: 'The username of the postgres user.\nDefault: $POSTGRES_USER',
+    },
+    'pg-password': {
+      type: 'string',
+      description: 'The password of the postgres user.\nDefault: $POSTGRES_PASSWORD',
+    },
+  }).argv;
 
 
-isPackageListingUpToDate()
-  .then((upToDate) => (upToDate ? null : getAndStorePackageListing()))
-  .then(() => getAndStorePackageDownloads())
+const datePat = /^\d{4}-\d{2}-\d{2}$/;
+
+if (!argv.startDate.match(datePat))
+{
+  yargs.showHelp();
+  console.error(`Improper date format: ${argv.startDate}`);
+  exit(1);
+}
+
+if (!argv.endDate.match(datePat))
+{
+  yargs.showHelp();
+  console.error(`Improper date format: ${argv.endDate}`);
+  exit(1);
+}
+
+try
+{
+  const stat = fs.statSync(argv.outputDir);
+  if (!stat.isDirectory())
+  {
+    yargs.showHelp();
+    console.error(`Not a directory: ${argv.outputDir}`);
+    exit(1);
+  }
+}
+catch (e)
+{
+  if (e.code === 'ENOENT')
+  {
+    console.log(`WARNING: making directory ${argv.outputDir}`);
+    fs.mkdirSync(argv.outputDir);
+  }
+}
+
+console.log(`Using output directory: ${argv.outputDir}`);
+
+
+if (!argv.pgHost)
+{
+  argv.pgHost = process.env["POSTGRES_HOST"];
+}
+
+if (!argv.pgPort)
+{
+  argv.pgPort = parseInt(process.env["POSTGRES_PORT"]);
+}
+
+if (!argv.pgDatabase)
+{
+  argv.pgDatabase = process.env["POSTGRES_DB"];
+}
+
+if (!argv.pgUser)
+{
+  argv.pgUser = process.env["POSTGRES_USER"];
+}
+
+if (!argv.pgPassword)
+{
+  argv.pgPassword = process.env["POSTGRES_PASSWORD"];
+}
+
+console.log(
+  'Using Postgres connection: ' +
+  `${argv.pgUser}@${argv.pgHost}:${argv.pgPort}/${argv.pgDatabase} ` +
+  `(with password?: ${!!(argv.pgPassword)})`
+);
+
+
+/**
+ * Opens and returns the database.
+ *
+ * If the schema is not initialized, performs that initialization.
+ *
+ * @return {Promise<import('pg').Client>}
+ */
+async function openDatabase() {
+  const db = new Client({
+    user:     argv.pgUser,
+    password: argv.pgPassword,
+    host:     argv.pgHost,
+    port:     argv.pgPort,
+    database: argv.pgDatabase,
+  });
+
+  console.debug('DEBUG: getting new database');
+
+  await db.connect();
+  
+  await db.query('BEGIN TRANSACTION');
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS package (
+      id TEXT NOT NULL,
+      key TEXT NOT NULL,
+      revision TEXT NOT NULL
+    )
+  `);
+
+  await db.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_package_id ON package (id)
+  `);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS package_downloads (
+      package_id TEXT NOT NULL,
+      start_dt TEXT NOT NULL,
+      end_dt TEXT NOT NULL,
+      downloads INTEGER
+    )
+  `);
+
+  await db.query(`
+    CREATE INDEX IF NOT EXISTS idx_package_downloads_package_id ON package_downloads(package_id)
+  `)
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS package_version (
+      id SERIAL PRIMARY KEY,
+      package_id TEXT NOT NULL,
+      version TEXT NOT NULL,
+      integrity TEXT NOT NULL,
+      sha1 TEXT NOT NULL
+    )
+  `);
+
+  await db.query('CREATE INDEX IF NOT EXISTS idx_package_version_package_id ON package_version (package_id)')
+
+  await db.query('COMMIT');
+
+  console.log('DEBUG: done getting new database');
+
+  return db;
+}
+
+
+let globalDb = null;
+/**
+ * Gets the sqlite database, or opens a new one if one does
+ * not yet exist.
+ * @return {Promise<import('pg').Client>}
+ */
+async function getDatabase() {
+  if (globalDb === null) {
+    globalDb = await openDatabase();
+  }
+  return globalDb;
+}
+
+
+getAndStorePackageListing()
+  .then(() => getAndStorePackageDownloads(argv.startDate, argv.endDate))
+  .then(() => getAndStorePackageManifests(argv.outputDir))
+  .then(() => downloadAllPackages(argv.outputDir))
+  .then(async () => {
+    await (await getDatabase()).end();
+    console.log('done.');
+  })
+  .catch((e) => {
+    console.error('ENCOUNTERED ERROR');
+    console.error(e);
+    exit(1);
+  });
+
+/*.then(() => getAndStorePackageDownloads())
   .then(() => getAndStorePackageManifests())
   .then(() => getAndStoreAllPackageRegexps())
   .then(() => buildRegexpDb())
@@ -1090,3 +1345,4 @@ isPackageListingUpToDate()
     getDatabase().close();
     process.exitCode = 1;
   });
+*/
