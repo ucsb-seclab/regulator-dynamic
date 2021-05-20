@@ -19,7 +19,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         'NODE_SRC',
-        help="The root directory of a nodejs source repository"
+        help="The root directory of a nodejs source repository",
+        required=True,
     )
 
     args = parser.parse_args()

@@ -18,12 +18,15 @@ static const std::string USAGE_TXT = \
 "options:\n"
 "    --bytecode     Generate bytecode output\n"
 "    --native       Generate native (x86_64) output\n"
-"    --flags FLAGS  Regex flags (i, m, u, etc...)";
+"    --flags FLAGS  Regex flags (i, m, u, etc...)\n"
+"    --width 1|2    The char-width to target";
 
 
 ParsedArguments ParsedArguments::Parse(int argc, char **argv)
 {
     ParsedArguments ret;
+
+    bool found_width = false;
 
     int arg_idx = 1;
     for (; arg_idx < argc; arg_idx++)
@@ -68,10 +71,42 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
             }
             ret.flags.clear();
             ret.flags.append(argv[arg_idx]);
+            cout << "Found flags: " << ret.flags << endl;
+            continue;
+        }
+
+        if (arg.compare("--width") == 0)
+        {
+            found_width = true;
+            arg_idx++;
+            if (arg_idx >= argc)
+            {
+                cerr << "--width must be followed by 1 or 2" << endl;
+                exit(1);
+            }
+            if (std::string(argv[arg_idx]).compare("1") == 0)
+            {
+                ret.one_wide = true;
+            }
+            else if (std::string(argv[arg_idx]).compare("2") == 0)
+            {
+                ret.one_wide = false;
+            }
+            else
+            {
+                cerr << "Unknown character width" << endl;
+                exit(1);
+            }
             continue;
         }
 
         cerr << "Unknown argument: " << arg << endl;
+        exit(1);
+    }
+
+    if (!found_width)
+    {
+        cerr << "Must specify a --width" << endl;
         exit(1);
     }
 

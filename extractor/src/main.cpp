@@ -7,7 +7,9 @@
 #include "src/objects/js-regexp.h"
 #include "src/objects/js-regexp-inl.h"
 #include "src/regexp/regexp-bytecode-generator.h"
+#include "src/regexp/regexp-bytecodes.h"
 #include "src/regexp/regexp.h"
+#include "src/objects/string.h"
 #include "src/objects/fixed-array.h"
 #include "src/objects/fixed-array-inl.h"
 #include "include/libplatform/libplatform.h"
@@ -68,8 +70,33 @@ int main(int argc, char* argv[])
                      v8::internal::CStrVector(args.target_regex.c_str())
                 )
     ).ToHandleChecked();
-    
+
     v8::internal::JSRegExp::Flags flags = v8::internal::JSRegExp::kNone;
+    std::string sz_flags = args.flags;
+    if (sz_flags.find('g') != string::npos || sz_flags.find('G') != string::npos)
+    {
+        flags |= v8::internal::JSRegExp::kGlobal;
+    }
+    if (sz_flags.find('i') != string::npos || sz_flags.find('I') != string::npos)
+    {
+        flags |= v8::internal::JSRegExp::kIgnoreCase;
+    }
+    if (sz_flags.find('m') != string::npos || sz_flags.find('M') != string::npos)
+    {
+        flags |= v8::internal::JSRegExp::kMultiline;
+    }
+    if (sz_flags.find('s') != string::npos || sz_flags.find('S') != string::npos)
+    {
+        flags |= v8::internal::JSRegExp::kDotAll;
+    }
+    if (sz_flags.find('u') != string::npos || sz_flags.find('U') != string::npos)
+    {
+        flags |= v8::internal::JSRegExp::kUnicode;
+    }
+    if (sz_flags.find('y') != string::npos || sz_flags.find('Y') != string::npos)
+    {
+        // ignore sticky (stateful) regexp
+    }
 
     cout << "Beginning compilation" << endl;
 
@@ -103,14 +130,38 @@ int main(int argc, char* argv[])
         // exposed in a header. Instead, I'll just make it match against a string and expect
         // code-gen to be run.
 
-        // This encodes the snowman emoji as a string. Done to force utf-8,
-        // otherwise the regexp will compile to latin1
-        v8::internal::Handle<v8::internal::String> subject = (
-        i_isolate->factory()
-                ->NewStringFromUtf8(
-                    v8::internal::CStrVector("\xE2\x98\x83")
-                )
-        ).ToHandleChecked();
+        v8::internal::Handle<v8::internal::String> subject;
+        if (args.one_wide)
+        {
+            cout << "Compiling for 1-byte wide" << endl;
+            subject = (
+                i_isolate->factory()
+                        ->NewStringFromUtf8(
+                            v8::internal::CStrVector("himom")
+                        )
+                ).ToHandleChecked();
+            if (!subject->IsOneByteRepresentation(i_isolate))
+            {
+                cerr << "Could not get one-byte output!" << endl;
+                exit(1);
+            }
+        }
+        else
+        {
+            cout << "Compiling for 2-byte wide" << endl;
+            // This encodes the snowman emoji as a string. Done to force utf-8 (char width 2),
+            // otherwise the regexp will compile to latin1 / ascii
+            subject = (i_isolate->factory()
+                    ->NewStringFromUtf8(
+                        v8::internal::CStrVector("\xE2\x98\x83")
+                    )
+            ).ToHandleChecked();
+            if (subject->IsOneByteRepresentation(i_isolate))
+            {
+                cerr << "Could not get two-byte output!" << endl;
+                exit(1);
+            }
+        }
 
         int capture_count = regexp->CaptureCount();
         v8::internal::Handle<v8::internal::RegExpMatchInfo> match_info =
@@ -121,10 +172,10 @@ int main(int argc, char* argv[])
         o2->Print(cout);
 
         // ok it should be bytecode-compiled now
-        v8::internal::Object bytecode_obj = regexp->Bytecode(false);
+        v8::internal::Object bytecode_obj = regexp->Bytecode(args.one_wide);
         cout << "Is Smi? " << bytecode_obj.IsSmi() << endl;
 
-        v8::internal::ByteArray ba = v8::internal::ByteArray::cast(regexp->Bytecode(false));
+        v8::internal::ByteArray ba = v8::internal::ByteArray::cast(regexp->Bytecode(args.one_wide));
 
         cout << "Got BA" << endl;
 
@@ -133,6 +184,8 @@ int main(int argc, char* argv[])
         uint8_t *pc_start = ba.GetDataStartAddress();
         cout << "Got PC Start: 0x" << std::hex << (uintptr_t)(pc_start) << endl;
         ba.Print(cout);
+
+        // v8::internal::RegExpBytecodeDisassemble(ba.GetDataStartAddress(), ba.length(), pattern->ToCString().get());
 
         size_t length = ba.length();
 

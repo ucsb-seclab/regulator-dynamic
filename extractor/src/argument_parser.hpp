@@ -57,6 +57,11 @@ public:
     std::string output_file_name;
 
     /**
+     * Indicates character width
+     */
+    bool one_wide;
+
+    /**
      * Parses command-line arguments
      */
     static ParsedArguments Parse(int argc, char **argv);
