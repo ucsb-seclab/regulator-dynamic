@@ -42,7 +42,8 @@ public:
     /**
      * The regex to run
      */
-    std::string target_regex;
+    char *target_regex;
+    size_t target_regex_size;
     /**
      * The regex flags
      */

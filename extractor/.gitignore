@@ -2,3 +2,4 @@ bin/
 deps/
 include/
 .gdb_history
+*.byt

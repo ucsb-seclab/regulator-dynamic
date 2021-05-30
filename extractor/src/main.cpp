@@ -67,7 +67,7 @@ int main(int argc, char* argv[])
     v8::internal::Handle<v8::internal::String> pattern = (
         i_isolate->factory()
                  ->NewStringFromUtf8(
-                     v8::internal::CStrVector(args.target_regex.c_str())
+                     v8::internal::VectorOf<char>(args.target_regex, args.target_regex_size)
                 )
     ).ToHandleChecked();
 

@@ -1,7 +1,10 @@
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <string>
 #include <iostream>
+#include <cstdio>
+#include <unistd.h>
 #include "argument_parser.hpp"
 
 using namespace std;
@@ -9,6 +12,27 @@ using namespace std;
 namespace regulator
 {
 
+void read_regexp(char * &buffer, size_t &nread){
+    buffer = (char *)malloc(4096);
+    nread = 0;
+    while (!feof(stdin)) {
+        std::cout << "reading" << std::endl;
+        size_t r = read(STDIN_FILENO, buffer + nread, (4096 - 1) - nread);
+        if (r == 0)
+        {
+            break;
+        }
+        else
+        {
+            nread += r;
+        }
+        if (nread == 4096 - 1)
+        {
+            break;
+        }
+    }
+    buffer[nread + 1] = 0;
+}
 
 static const std::string USAGE_TXT = \
 "USAGE: extractor [options] REGEXP OUTPUT_FILE\n"
@@ -27,6 +51,7 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
     ParsedArguments ret;
 
     bool found_width = false;
+    bool regex_stdin = false;
 
     int arg_idx = 1;
     for (; arg_idx < argc; arg_idx++)
@@ -45,6 +70,13 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
         if (arg.find("--") != 0)
         {
             // must be the regex
+            break;
+        }
+
+        if (arg.compare("--") == 0)
+        {
+            // regex from stdin
+            regex_stdin = true;
             break;
         }
 
@@ -124,8 +156,15 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
         exit(1);
     }
 
-    ret.target_regex.clear();
-    ret.target_regex.append(argv[arg_idx]);
+    if (regex_stdin)
+    {
+        read_regexp(ret.target_regex, ret.target_regex_size);
+    }
+    else
+    {
+        ret.target_regex = argv[arg_idx];
+        ret.target_regex_size = strlen(argv[arg_idx]);
+    }
     arg_idx++;
 
     if (argc <= arg_idx)
