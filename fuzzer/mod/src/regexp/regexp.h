@@ -87,6 +87,7 @@ class RegExp final : public AllStatic {
       Handle<String> subject,
       int index,
       Handle<RegExpMatchInfo> last_match_info,
+      int32_t max_total,
       regulator::fuzz::CoverageTracker *coverage_tracker
   );
   // ------- (end) mod_mcl_2020 -------

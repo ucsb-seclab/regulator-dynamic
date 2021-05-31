@@ -40,6 +40,11 @@ public:
     std::vector<size_t> strlens;
 
     /**
+     * Seed strings to feed to the fuzzer
+     */
+    std::vector<std::string> seeds;
+
+    /**
      * Whether to fuzz one-byte strings
      */
     bool fuzz_one_byte;
@@ -60,6 +65,11 @@ public:
      * -1 indicates no timeout
      */
     int32_t timeout_secs;
+
+    /**
+     * Maximum total value before quitting fuzz
+     */
+    int32_t max_total;
 
     /**
      * Timeout, in number of seconds, for an individual string length.

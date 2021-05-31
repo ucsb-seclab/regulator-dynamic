@@ -46,6 +46,7 @@ public:
           num_generations(0),
           regexp(regexp),
           strlen(strlen),
+          max_total(0),
           last_screen_render(std::chrono::steady_clock::now() - std::chrono::hours(100)),
           exec_since_last_progress(std::chrono::seconds(0)),
           exec_overall(std::chrono::seconds(0))
@@ -85,6 +86,8 @@ public:
      * The length of the string to fuzz
      */
     const size_t strlen;
+
+    int32_t max_total;
 
     /**
      * The regular expression to fuzz
@@ -173,6 +176,8 @@ typedef struct {
 
     std::chrono::steady_clock::duration individual_timeout;
 
+    int32_t max_total;
+
     /**
      * The number of active (non-quit) fuzz campaigns; used
      * to indicate when all worker-threads should quit because
@@ -256,7 +261,8 @@ inline void work_interrupt(FuzzCampaign<Char> *campaign)
 
         campaign->last_screen_render = now;
         campaign->executions_since_last_render = 0;
-        std::cout << to_print.str() << std::endl;
+        to_print << "\n";
+        std::cout << to_print.str() << std::flush;
     }
 }
 
@@ -268,8 +274,14 @@ template<typename Char>
 inline bool seed_corpus(
     Corpus<Char> &corpus,
     regulator::executor::V8RegExp *regexp,
-    size_t strlen)
+    size_t strlen,
+    std::vector<std::string> &seeds
+    )
 {
+    if (f::FLAG_debug)
+    {
+        std::cout << "DEBUG Seeding corpus" << std::endl;
+    }
     Char *baseline = new Char[strlen];
     for (size_t i=0; i<strlen; i++)
     {
@@ -277,18 +289,23 @@ inline bool seed_corpus(
     }
 
     // we need to execute them to get the initial coverage tracker
-    regulator::executor::V8RegExpResult result;
+    regulator::executor::V8RegExpResult result(strlen);
+    if (f::FLAG_debug)
+    {
+        std::cout << "DEBUG executing seed to establish baseline" << std::endl;
+    }
     regulator::executor::Result result_code = regulator::executor::Exec(
         regexp,
         baseline,
         strlen,
         result,
+        -1,
         regulator::executor::kOnlyOneByte
     );
 
     if (result_code != regulator::executor::kSuccess)
     {
-        std::cout << "Baseline execution failed for 1-byte!!!" << std::endl;
+        std::cout << "Baseline execution failed!!!" << std::endl;
         return false;
     }
 
@@ -299,6 +316,51 @@ inline bool seed_corpus(
     );
 
     corpus.Record(entry);
+
+    // now, repeat that for all seeds which are no longer than this strlen
+    for (std::string seed : seeds)
+    {
+        if (seed.size() > strlen)
+        {
+            continue;
+        }
+
+        std::string derived_seed = seed;
+        while (derived_seed.size() < strlen)
+        {
+            derived_seed += "1";
+        }
+
+        Char *buf = new Char[derived_seed.size()];
+        for (size_t i=0; i < derived_seed.size(); i++)
+        {
+            buf[i] = derived_seed[i];
+        }
+
+        regulator::executor::Result result_code = regulator::executor::Exec(
+            regexp,
+            buf,
+            strlen,
+            result,
+            -1,
+            regulator::executor::kOnlyOneByte
+        );
+
+        if (result_code != regulator::executor::kSuccess)
+        {
+            std::cout << "Baseline execution failed!!!" << std::endl;
+            return false;
+        }
+
+        CorpusEntry<Char> *entry = new CorpusEntry<Char>(
+            buf,
+            strlen,
+            new CoverageTracker(*result.coverage_tracker.get())
+        );
+
+        corpus.Record(entry);
+    }
+
     corpus.FlushGeneration();
 
     return true;
@@ -315,14 +377,22 @@ template <typename Char>
 inline bool make_campaign(
     struct fuzz_campaign_ll *&head,
     regulator::executor::V8RegExp *regexp,
-    size_t strlen)
+    size_t strlen,
+    std::vector<std::string> &seeds,
+    int32_t max_total)
 {
     FuzzCampaign<Char> *campaign_out = new FuzzCampaign<Char>(strlen, regexp);
+    campaign_out->max_total = max_total;
 
-    if (!seed_corpus(campaign_out->corpus, regexp, strlen))
+    if (!seed_corpus(campaign_out->corpus, regexp, strlen, seeds))
     {
         std::cerr << "ERROR: failed to seed corpus" << std::endl;
         return false;
+    }
+
+    if (f::FLAG_debug)
+    {
+        std::cout << "DEBUG finished seeding a campaign" << std::endl;
     }
 
     std::vector<Char> *interesting = new std::vector<Char>();
@@ -367,7 +437,7 @@ inline bool make_campaign(
  * is returned, and the known-worst entry is updated.
  */
 template<typename Char>
-inline void evaluate_child(
+inline bool evaluate_child(
     Char *child,
     size_t strlen,
     regulator::executor::V8RegExp *regexp,
@@ -388,6 +458,7 @@ inline void evaluate_child(
         child,
         strlen,
         result,
+        campaign->max_total,
         enforce_encoding
     );
 
@@ -419,13 +490,24 @@ inline void evaluate_child(
                 )
             );
 
-            return;
+            return true;
         }
+    }
+    else if (result_code == regulator::executor::kViolateMaxTotal)
+    {
+        std::cout << "Maximum Total reached: " << (
+            new CorpusEntry<Char>(
+                    child,
+                    strlen,
+                    new CoverageTracker(*result.coverage_tracker.get())
+                )
+            )->ToString();
+        return false;
     }
 
     // No significance found in this child -- toss its memory
     delete[] child;
-    return;
+    return true;
 }
 
 
@@ -433,9 +515,9 @@ inline void evaluate_child(
  * Pass over the given Corpus exactly once
  */
 template<typename Char>
-inline void work_on_campaign(FuzzCampaign<Char> *campaign)
+inline bool work_on_campaign(FuzzCampaign<Char> *campaign)
 {
-    regulator::executor::V8RegExpResult result;
+    regulator::executor::V8RegExpResult result(campaign->strlen);
     std::vector<Char *> children_to_eval;
     auto yield_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(100);
     auto start_time = std::chrono::steady_clock::now();
@@ -489,7 +571,7 @@ inline void work_on_campaign(FuzzCampaign<Char> *campaign)
         {
             Char *child = children_to_eval[j];
 
-            evaluate_child<Char>(
+            bool keep_going = evaluate_child<Char>(
                 child,
                 campaign->strlen,
                 campaign->regexp,
@@ -497,6 +579,10 @@ inline void work_on_campaign(FuzzCampaign<Char> *campaign)
                 campaign,
                 parent
             );
+            if (!keep_going)
+            {
+                return false;
+            }
         }
     }
 
@@ -506,6 +592,7 @@ inline void work_on_campaign(FuzzCampaign<Char> *campaign)
 
     std::chrono::steady_clock::duration work_done = std::chrono::steady_clock::now() - start_time;
     campaign->exec_overall += work_done;
+    return true;
 }
 
 
@@ -568,18 +655,18 @@ void do_work(fuzz_global_context *context)
         if (my_work->is_one_byte)
         {
             auto campaign = reinterpret_cast<regulator::fuzz::FuzzCampaign<uint8_t> *>(my_work->campaign);
-            work_on_campaign<uint8_t>(campaign);
+            bool keep_going = work_on_campaign<uint8_t>(campaign);
             work_interrupt(campaign);
 
-            should_quit_campaign = campaign->exec_since_last_progress > context->individual_timeout;
+            should_quit_campaign = !keep_going || campaign->exec_since_last_progress > context->individual_timeout;
         }
         else
         {
             auto campaign = reinterpret_cast<regulator::fuzz::FuzzCampaign<uint16_t> *>(my_work->campaign);
-            work_on_campaign<uint16_t>(campaign);
+            bool keep_going = work_on_campaign<uint16_t>(campaign);
             work_interrupt(campaign);
 
-            should_quit_campaign = campaign->exec_since_last_progress > context->individual_timeout;
+            should_quit_campaign = !keep_going || campaign->exec_since_last_progress > context->individual_timeout;
         }
 
         // work completed, put my_work back on the work_ll ONLY IF WE SHOULD NOT QUIT
@@ -638,8 +725,10 @@ uint64_t Fuzz(
     v8::Isolate *isolate,
     regulator::executor::V8RegExp *regexp,
     std::vector<size_t> &strlens,
+    std::vector<std::string> &seeds,
     int32_t timeout_secs,
     int32_t individual_timeout_secs,
+    int32_t max_total,
     bool fuzz_one_byte,
     bool fuzz_two_byte,
     uint16_t n_threads)
@@ -648,6 +737,7 @@ uint64_t Fuzz(
 
     context.begin = std::chrono::steady_clock::now();
     context.work_ll = nullptr;
+    context.max_total = max_total;
 
     if (timeout_secs > 0)
     {
@@ -678,7 +768,7 @@ uint64_t Fuzz(
                 std::cout << "DEBUG adding 1-byte campaign for strlen " << std::dec << strlen << std::endl;
             }
 
-            if (!make_campaign<uint8_t>(context.work_ll, regexp, strlen))
+            if (!make_campaign<uint8_t>(context.work_ll, regexp, strlen, seeds, max_total))
             {
                 return 0;
             }
@@ -691,7 +781,7 @@ uint64_t Fuzz(
                 std::cout << "DEBUG adding 2-byte campaign for strlen " << std::dec << strlen << std::endl;
             }
 
-            if (!make_campaign<uint16_t>(context.work_ll, regexp, strlen))
+            if (!make_campaign<uint16_t>(context.work_ll, regexp, strlen, seeds, max_total))
             {
                 return 0;
             }

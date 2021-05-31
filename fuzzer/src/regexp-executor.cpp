@@ -52,9 +52,14 @@ V8RegExp::V8RegExp()
 V8RegExpResult::V8RegExpResult()
 {
     this->match_success = false;
-    this->coverage_tracker = std::make_unique<regulator::fuzz::CoverageTracker>();
+    this->coverage_tracker = std::make_unique<regulator::fuzz::CoverageTracker>(0);
 }
 
+V8RegExpResult::V8RegExpResult(uint32_t string_length)
+{
+    this->match_success = false;
+    this->coverage_tracker = std::make_unique<regulator::fuzz::CoverageTracker>(string_length);
+}
 
 V8RegExpResult::~V8RegExpResult()
 {
@@ -266,6 +271,7 @@ Result Exec(
     const Char *subject,
     size_t subject_len,
     V8RegExpResult &out,
+    int32_t max_total,
     EnforceRepresentation rep)
 {
     // Following set-up seen at v8 file fuzzer/regexp.cc
@@ -345,22 +351,30 @@ Result Exec(
     }
 
     out.coverage_tracker->Clear();
-    v8::internal::Handle<v8::internal::Object> o2 = v8::internal::RegExp::Exec(
+    v8::internal::MaybeHandle<v8::internal::Object> o2 = v8::internal::RegExp::Exec(
         i_isolate,
         regexp->regexp,
         h_subject,
         0,
         match_info,
+        max_total,
         out.coverage_tracker.get()
-    ).ToHandleChecked();
+    );
 
+    if (o2.is_null())
+    {
+        out.match_success = false;
+    }
+    else
+    {
+        out.match_success = !(o2.ToHandleChecked()->IsNull());
+    }
 
     if (i_isolate->has_pending_exception())
     {
         std::cerr << "Pending exception!!!" << std::endl;
     }
 
-    out.match_success = !(o2->IsNull());
     out.coverage_tracker->Bucketize();
 
     // NOTE: we /could/ do this if we coordinated threads correctly (Pump... requires
@@ -376,6 +390,11 @@ Result Exec(
     //     std::cout << "unusual number of pumps: " << pumps << std::endl;
     // }
 
+    // check if we violated max total
+    if (max_total >= 0 && out.coverage_tracker->Total() >= max_total)
+    {
+        return Result::kViolateMaxTotal;
+    }
     return Result::kSuccess;
 }
 
@@ -385,6 +404,7 @@ Result Exec<uint8_t>(
     const uint8_t *subject,
     size_t subject_len,
     V8RegExpResult &out,
+    int32_t max_total,
     EnforceRepresentation rep);
 
 template
@@ -393,6 +413,7 @@ Result Exec<uint16_t>(
     const uint16_t *subject,
     size_t subject_len,
     V8RegExpResult &out,
+    int32_t max_total,
     EnforceRepresentation rep);
 
 }

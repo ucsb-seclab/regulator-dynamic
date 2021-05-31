@@ -7,6 +7,7 @@
 #include "argument-parser.hpp"
 #include "cxxopts.hpp"
 #include "flags.hpp"
+#include "version.hpp"
 
 using namespace std;
 
@@ -51,6 +52,7 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
 
     cxxopts::Options options(argv[0], "Regexp catastrophic backtracking fuzzer");
     options.add_options()
+        ("v,version", "Print version", cxxopts::value<bool>()->default_value("False"))
         ("f,flags", "Regexp flags", cxxopts::value<std::string>()->default_value(""))
         ("r,regexp", "The regexp to fuzz, as an ascii string", cxxopts::value<std::string>())
         ("b,bregexp", "The regexp to fuzz, as a base64 utf8 string", cxxopts::value<std::string>())
@@ -60,6 +62,8 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
         ("s,seed", "Seed for random number generator", cxxopts::value<uint32_t>()->default_value("0"))
         ("w,widths", "Which byte-widths to fuzz: use either 1, 2, or \"1,2\"", cxxopts::value<std::string>()->default_value(""))
         ("m,threads", "How many threads to use", cxxopts::value<uint16_t>()->default_value("1"))
+        ("maxtot", "Maximum Total value before bailing on fuzzing", cxxopts::value<int32_t>()->default_value("-1"))
+        ("textseed", "Text seeds for the fuzzer, separated by |||", cxxopts::value<std::string>()->default_value(""))
         ("debug", "Enable debug mode", cxxopts::value<bool>()->default_value("False"))
         ("h,help", "Print help", cxxopts::value<bool>()->default_value("False"));
 
@@ -69,6 +73,33 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
     {
         std::cout << options.help() << std::endl;
         exit(0);
+    }
+
+    if (parsed["version"].as<bool>())
+    {
+        std::cout << "Regulator v" << VERSION << std::endl;
+        exit(0);
+    }
+
+    if (parsed["textseed"].count() > 0)
+    {
+        std::string allseeds = parsed["textseed"].as<std::string>();
+        size_t last_idx = 0;
+        while (last_idx < allseeds.size())
+        {
+            size_t next_sep = allseeds.find("|||", last_idx);
+
+            if (next_sep == std::string::npos)
+            {
+                next_sep = allseeds.size();
+            }
+
+            std::string this_seed = allseeds.substr(last_idx, (next_sep - last_idx));
+            std::cout << "using text seed: " << this_seed << std::endl;
+            ret.seeds.push_back(this_seed);
+
+            last_idx = next_sep + 3;
+        }
     }
 
     if (parsed["regexp"].count() > 0)
@@ -101,6 +132,7 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
 
     ret.flags = parsed["flags"].as<std::string>();
     ret.num_threads = parsed["threads"].as<uint16_t>();
+    ret.max_total = parsed["maxtot"].as<int32_t>();
     ret.fuzz_one_byte = true;
     ret.fuzz_two_byte = true;
 

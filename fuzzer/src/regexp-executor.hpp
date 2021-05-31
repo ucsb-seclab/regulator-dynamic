@@ -27,6 +27,7 @@ enum Result {
     kNotValidString,
     kCouldNotCompile,
     kBadStrRepresentation,
+    kViolateMaxTotal,
 };
 
 enum RepresentationUsed {
@@ -59,6 +60,7 @@ public:
 class V8RegExpResult {
 public:
     V8RegExpResult();
+    V8RegExpResult(uint32_t string_length);
     ~V8RegExpResult();
 
     bool match_success;
@@ -87,6 +89,7 @@ Result Exec(
     const Char *subject,
     size_t subject_lens,
     V8RegExpResult &out,
+    int32_t max_total = -1,
     EnforceRepresentation rep = kAnyRepresentation);
 
 }

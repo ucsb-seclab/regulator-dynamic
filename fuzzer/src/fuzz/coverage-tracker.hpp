@@ -81,7 +81,7 @@ struct suggestion
  */
 class CoverageTracker {
 public:
-    CoverageTracker();
+    CoverageTracker(uint32_t string_length);
     CoverageTracker(const CoverageTracker &other);
     ~CoverageTracker();
 
@@ -214,11 +214,25 @@ public:
         std::vector<struct suggestion> &out
     ) const;
 
+    /**
+     * Mark the given character index as observed once
+     */
+    void Observe(
+        uint32_t i
+    );
+
+    /**
+     * Get the observation count of the most-observed character
+     */
+    uint16_t MaxObservation() const;
+
 private:
     cov_t *covmap;
     std::vector<struct suggestion> suggestions;
     uint64_t total;
     path_hash_t path_hash;
+    uint32_t string_length;
+    uint16_t *char_observation_counts;
 };
 
 }

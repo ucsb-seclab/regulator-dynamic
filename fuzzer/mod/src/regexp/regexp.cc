@@ -64,12 +64,12 @@ class RegExpImpl final : public AllStatic {
   // ------- mod_mcl_2020 -------
   static int IrregexpExecRaw(Isolate* isolate, Handle<JSRegExp> regexp,
                              Handle<String> subject, int index, int32_t* output,
-                             int output_size, regulator::fuzz::CoverageTracker *coverage_tracker);
+                             int output_size, int32_t max_total, regulator::fuzz::CoverageTracker *coverage_tracker);
 
   V8_WARN_UNUSED_RESULT static MaybeHandle<Object> IrregexpExec(
       Isolate* isolate, Handle<JSRegExp> regexp, Handle<String> subject,
       int index, Handle<RegExpMatchInfo> last_match_info,
-      regulator::fuzz::CoverageTracker *coverage_tracker);
+      int32_t max_total, regulator::fuzz::CoverageTracker *coverage_tracker);
   // ------- (end) mod_mcl_2020 -------
 
 
@@ -229,14 +229,16 @@ MaybeHandle<Object> RegExp::Exec(
       Handle<String> subject,
       int index,
       Handle<RegExpMatchInfo> last_match_info,
+      int32_t max_total,
       regulator::fuzz::CoverageTracker *coverage_tracker) {
   switch (regexp->TypeTag()) {
     case JSRegExp::ATOM:
       return RegExpImpl::AtomExec(isolate, regexp, subject, index,
                                   last_match_info);
     case JSRegExp::IRREGEXP: {
-      return RegExpImpl::IrregexpExec(isolate, regexp, subject, index,
-                                      last_match_info, coverage_tracker);
+      auto ret = RegExpImpl::IrregexpExec(isolate, regexp, subject, index,
+                                      last_match_info, max_total, coverage_tracker);
+      return ret;
     }
     default:
       UNREACHABLE();
@@ -248,9 +250,9 @@ MaybeHandle<Object> RegExp::Exec(
 MaybeHandle<Object> RegExp::Exec(Isolate* isolate, Handle<JSRegExp> regexp,
                                  Handle<String> subject, int index,
                                  Handle<RegExpMatchInfo> last_match_info) {
-  auto coverage_tracker = std::make_unique<regulator::fuzz::CoverageTracker>();
+  auto coverage_tracker = std::make_unique<regulator::fuzz::CoverageTracker>(0);
 
-  return RegExp::Exec(isolate, regexp, subject, index, last_match_info, coverage_tracker.get());
+  return RegExp::Exec(isolate, regexp, subject, index, last_match_info, -1, coverage_tracker.get());
 }
 
 // RegExp Atom implementation: Simple string search using indexOf.
@@ -564,6 +566,7 @@ int RegExpImpl::IrregexpExecRaw(Isolate* isolate, Handle<JSRegExp> regexp,
     index,
     output,
     output_size,
+    -1,
     nullptr
   );
 }
@@ -571,7 +574,7 @@ int RegExpImpl::IrregexpExecRaw(Isolate* isolate, Handle<JSRegExp> regexp,
 int RegExpImpl::IrregexpExecRaw(Isolate* isolate, Handle<JSRegExp> regexp,
                                 Handle<String> subject, int index,
                                 int32_t* output, int output_size,
-                                regulator::fuzz::CoverageTracker *coverage_tracker) {
+                                int32_t max_total, regulator::fuzz::CoverageTracker *coverage_tracker) {
   Handle<FixedArray> irregexp(FixedArray::cast(regexp->data()), isolate);
 
   DCHECK_LE(0, index);
@@ -623,9 +626,9 @@ int RegExpImpl::IrregexpExecRaw(Isolate* isolate, Handle<JSRegExp> regexp,
       IrregexpInterpreter::Result result =
           IrregexpInterpreter::MatchForCallFromRuntime(
               isolate, regexp, subject, raw_output, number_of_capture_registers,
-              index, coverage_tracker);
+              index, max_total,coverage_tracker);
       DCHECK_IMPLIES(result == IrregexpInterpreter::EXCEPTION,
-                     isolate->has_pending_exception());
+                     (max_total >= 0 && coverage_tracker->Total() >= max_total) || isolate->has_pending_exception());
 
       switch (result) {
         case IrregexpInterpreter::SUCCESS:
@@ -658,17 +661,17 @@ MaybeHandle<Object> RegExpImpl::IrregexpExec(
     Isolate* isolate, Handle<JSRegExp> regexp, Handle<String> subject,
     int previous_index, Handle<RegExpMatchInfo> last_match_info) {
 
-  auto coverage_tracker = std::make_unique<regulator::fuzz::CoverageTracker>();
+  auto coverage_tracker = std::make_unique<regulator::fuzz::CoverageTracker>(0);
 
   return IrregexpExec(
-    isolate, regexp, subject, previous_index, last_match_info, coverage_tracker.get()
+    isolate, regexp, subject, previous_index, last_match_info, -1, coverage_tracker.get()
   );
 }
 
 MaybeHandle<Object> RegExpImpl::IrregexpExec(
     Isolate* isolate, Handle<JSRegExp> regexp, Handle<String> subject,
     int previous_index, Handle<RegExpMatchInfo> last_match_info,
-    regulator::fuzz::CoverageTracker *coverage_tracker) {
+    int32_t max_total, regulator::fuzz::CoverageTracker *coverage_tracker) {
   DCHECK_EQ(regexp->TypeTag(), JSRegExp::IRREGEXP);
 
   subject = String::Flatten(isolate, subject);
@@ -714,7 +717,7 @@ MaybeHandle<Object> RegExpImpl::IrregexpExec(
 
   int res =
       RegExpImpl::IrregexpExecRaw(isolate, regexp, subject, previous_index,
-                                  output_registers, required_registers, coverage_tracker);
+                                  output_registers, required_registers, max_total, coverage_tracker);
 
   if (res == RegExp::RE_SUCCESS) {
     int capture_count =
@@ -723,7 +726,7 @@ MaybeHandle<Object> RegExpImpl::IrregexpExec(
                                     capture_count, output_registers);
   }
   if (res == RegExp::RE_EXCEPTION) {
-    DCHECK(isolate->has_pending_exception());
+    DCHECK((max_total >= 0 && coverage_tracker->Total() >= max_total) || isolate->has_pending_exception());
     return MaybeHandle<Object>();
   }
   DCHECK(res == RegExp::RE_FAILURE);

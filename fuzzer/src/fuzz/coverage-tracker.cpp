@@ -16,9 +16,18 @@ namespace regulator
 namespace fuzz
 {
 
-CoverageTracker::CoverageTracker()
+CoverageTracker::CoverageTracker(uint32_t string_length)
 {
+    this->string_length = string_length;
     this->covmap = new cov_t[MAP_SIZE];
+    if (string_length == 0)
+    {
+        this->char_observation_counts = nullptr;
+    }
+    else
+    {
+        this->char_observation_counts = new uint16_t[string_length];
+    }
     this->Clear();
 }
 
@@ -27,15 +36,26 @@ CoverageTracker::CoverageTracker(const CoverageTracker &other)
 {
     this->covmap = new cov_t[MAP_SIZE];
     memcpy(this->covmap, other.covmap, MAP_SIZE * sizeof(cov_t));
+    if (other.string_length == 0 || other.char_observation_counts == nullptr)
+    {
+        this->char_observation_counts = nullptr;
+    }
+    else
+    {
+        this->char_observation_counts = new uint16_t[other.string_length];
+        memcpy(this->char_observation_counts, other.char_observation_counts, other.string_length * sizeof(uint16_t));
+    }
     this->total = other.total;
     this->path_hash = other.path_hash;
     this->suggestions = other.suggestions;
+    this->string_length = other.string_length;
 }
 
 
 CoverageTracker::~CoverageTracker()
 {
     delete[] this->covmap;
+    delete[] this->char_observation_counts;
 }
 
 
@@ -92,6 +112,10 @@ void CoverageTracker::Clear()
     this->path_hash = 0;
     this->total = 0;
     memset(this->covmap, 0, MAP_SIZE * sizeof(cov_t));
+    if (this->char_observation_counts != nullptr)
+    {
+        memset(this->char_observation_counts, 0, this->string_length * sizeof(uint16_t));
+    }
     this->suggestions.clear();
 }
 
@@ -194,6 +218,7 @@ bool CoverageTracker::MaximizesAnyEdge(CoverageTracker *other) const
             return true;
         }
     }
+    return false;
 }
 
 bool CoverageTracker::EdgeIsEqual(CoverageTracker *other, size_t edge_id) const
@@ -255,6 +280,30 @@ double CoverageTracker::Residency() const
     }
 
     return num_occupied_slots / static_cast<double>(MAP_SIZE);
+}
+
+void CoverageTracker::Observe(uint32_t i)
+{
+    if (this->char_observation_counts == nullptr)
+    {
+        return;
+    }
+    auto prev = this->char_observation_counts[i];
+    this->char_observation_counts[i] = std::max((uint16_t)(prev + 1), prev);
+}
+
+uint16_t CoverageTracker::MaxObservation() const
+{
+    if (this->string_length == 0 || this->char_observation_counts == nullptr)
+    {
+        return 0;
+    }
+    auto max = this->char_observation_counts[0];
+    for (size_t i = 1; i < this->string_length; i++)
+    {
+        max = std::max(this->char_observation_counts[i], max);
+    }
+    return max;
 }
 
 }

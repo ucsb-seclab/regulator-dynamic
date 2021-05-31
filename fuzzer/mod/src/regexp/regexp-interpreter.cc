@@ -327,6 +327,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
                                      int current, uint32_t current_char,
                                      RegExp::CallOrigin call_origin,
                                      const uint32_t backtrack_limit,
+                                     int32_t max_total,
                                      regulator::fuzz::CoverageTracker *coverage_tracker,
                                      int registers_length) {
   int current_char_src = -1;
@@ -408,6 +409,8 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
     insn = Load32Aligned(pc);
     switch (insn & BYTECODE_MASK) {
 #endif  // V8_USE_COMPUTED_GOTO
+#define ASSERT_MAXTOTAL() {if (max_total >= 0 && coverage_tracker->Total() >= max_total) {return IrregexpInterpreter::EXCEPTION;}}
+
     BYTECODE(BREAK) { UNREACHABLE(); }
     BYTECODE(PUSH_CP) {
       ADVANCE(PUSH_CP);
@@ -417,7 +420,12 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       DISPATCH();
     }
     BYTECODE(PUSH_BT) {
+      // ------- mod_mcl_2020 -------
+      uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
       ADVANCE(PUSH_BT);
+      coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+      ASSERT_MAXTOTAL();
+      // ------- mod_mcl_2020 -------
       if (!backtrack_stack.push(Load32Aligned(pc + 4))) {
         return MaybeThrowStackOverflow(isolate, call_origin);
       }
@@ -476,7 +484,9 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
           HandleInterrupts(isolate, call_origin, &code_array, &subject_string,
                            &code_base, &subject, &pc);
       if (return_code != IrregexpInterpreter::SUCCESS) return return_code;
-
+      // ------- mod_mcl_2020 -------
+      ASSERT_MAXTOTAL();
+      // ------- (end) mod_mcl_2020 -------
       SET_PC_FROM_OFFSET(backtrack_stack.pop());
       DISPATCH();
     }
@@ -518,6 +528,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_GREEDY);
         coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        ASSERT_MAXTOTAL();
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -531,6 +542,8 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(LOAD_CURRENT_CHAR);
         coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        coverage_tracker->Observe(pos);
+        ASSERT_MAXTOTAL();
         // ------- (end) mod_mcl_2020 -------
         current_char = subject[pos];
         current_char_src = pos; // ------- mod_mcl_2020 -------
@@ -541,7 +554,10 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       ADVANCE(LOAD_CURRENT_CHAR_UNCHECKED);
       int pos = current + (insn >> BYTECODE_SHIFT);
       current_char = subject[pos];
-      current_char_src = pos; // ------- mod_mcl_2020 -------
+      // ------- mod_mcl_2020 -------
+      coverage_tracker->Observe(pos);
+      current_char_src = pos;
+      // ------- (end) mod_mcl_2020 -------
       DISPATCH();
     }
     BYTECODE(LOAD_2_CURRENT_CHARS) {
@@ -553,6 +569,9 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(LOAD_2_CURRENT_CHARS);
         coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        coverage_tracker->Observe(pos);
+        coverage_tracker->Observe(pos + 1);
+        ASSERT_MAXTOTAL();
         // ------- (end) mod_mcl_2020 -------
         Char next = subject[pos + 1];
         current_char = (subject[pos] | (next << (kBitsPerByte * sizeof(Char))));
@@ -565,7 +584,11 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       int pos = current + (insn >> BYTECODE_SHIFT);
       Char next = subject[pos + 1];
       current_char = (subject[pos] | (next << (kBitsPerByte * sizeof(Char))));
-      current_char_src = pos; // ------- mod_mcl_2020 -------
+      // ------- mod_mcl_2020 -------
+      coverage_tracker->Observe(pos);
+      coverage_tracker->Observe(pos + 1);
+      current_char_src = pos;
+      // ------- (end) mod_mcl_2020 -------
       DISPATCH();
     }
     BYTECODE(LOAD_4_CURRENT_CHARS) {
@@ -578,6 +601,11 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(LOAD_4_CURRENT_CHARS);
         coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        ASSERT_MAXTOTAL();
+        coverage_tracker->Observe(pos);
+        coverage_tracker->Observe(pos + 1);
+        coverage_tracker->Observe(pos + 2);
+        coverage_tracker->Observe(pos + 3);
         // ------- (end) mod_mcl_2020 -------
         Char next1 = subject[pos + 1];
         Char next2 = subject[pos + 2];
@@ -597,7 +625,13 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       Char next3 = subject[pos + 3];
       current_char =
           (subject[pos] | (next1 << 8) | (next2 << 16) | (next3 << 24));
-      current_char_src = pos; // ------- mod_mcl_2020 -------
+      // ------- mod_mcl_2020 -------
+      coverage_tracker->Observe(pos);
+      coverage_tracker->Observe(pos + 1);
+      coverage_tracker->Observe(pos + 2);
+      coverage_tracker->Observe(pos + 3);
+      current_char_src = pos;
+      // ------- (end) mod_mcl_2020 -------
       DISPATCH();
     }
     BYTECODE(CHECK_4_CHARS) {
@@ -609,6 +643,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_4_CHARS);
         coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        ASSERT_MAXTOTAL();
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -623,6 +658,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         uintptr_t other_branch_pc = reinterpret_cast<const uintptr_t>(code_base + Load32Aligned(pc + 4));
         ADVANCE(CHECK_CHAR);
         coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        ASSERT_MAXTOTAL();
         coverage_tracker->Suggest(
           prev_pc,
           other_branch_pc,
@@ -642,6 +678,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_NOT_4_CHARS);
         coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        ASSERT_MAXTOTAL();
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -665,6 +702,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_NOT_CHAR);
         coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        ASSERT_MAXTOTAL();
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -678,6 +716,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(AND_CHECK_4_CHARS);
         coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        ASSERT_MAXTOTAL();
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -691,6 +730,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(AND_CHECK_CHAR);
         coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        ASSERT_MAXTOTAL();
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -704,6 +744,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(AND_CHECK_NOT_4_CHARS);
         coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        ASSERT_MAXTOTAL();
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -717,6 +758,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(AND_CHECK_NOT_CHAR);
         coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        ASSERT_MAXTOTAL();
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -732,6 +774,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(MINUS_AND_CHECK_NOT_CHAR);
         coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        ASSERT_MAXTOTAL();
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -746,6 +789,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_CHAR_IN_RANGE);
         coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        ASSERT_MAXTOTAL();
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -760,6 +804,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_CHAR_NOT_IN_RANGE);
         coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        ASSERT_MAXTOTAL();
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -772,6 +817,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_BIT_IN_TABLE);
         coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        ASSERT_MAXTOTAL();
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -785,6 +831,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_LT);
         coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        ASSERT_MAXTOTAL();
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -798,6 +845,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_GT);
         coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        ASSERT_MAXTOTAL();
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -810,6 +858,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_REGISTER_LT);
         coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        ASSERT_MAXTOTAL();
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -822,6 +871,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_REGISTER_GE);
         coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        ASSERT_MAXTOTAL();
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -834,6 +884,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_REGISTER_EQ_POS);
         coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        ASSERT_MAXTOTAL();
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -845,6 +896,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_NOT_REGS_EQUAL);
         coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        ASSERT_MAXTOTAL();
         // ------- (end) mod_mcl_2020 -------
       } else {
         SET_PC_FROM_OFFSET(Load32Aligned(pc + 8));
@@ -867,6 +919,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
       ADVANCE(CHECK_NOT_BACK_REF);
       coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+      ASSERT_MAXTOTAL();
       // ------- (end) mod_mcl_2020 -------
       DISPATCH();
     }
@@ -886,6 +939,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
       ADVANCE(CHECK_NOT_BACK_REF_BACKWARD);
       coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+      ASSERT_MAXTOTAL();
       // ------- (end) mod_mcl_2020 -------
       DISPATCH();
     }
@@ -907,6 +961,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
       ADVANCE(CHECK_NOT_BACK_REF_NO_CASE);
       coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+      ASSERT_MAXTOTAL();
       // ------- (end) mod_mcl_2020 -------
       DISPATCH();
     }
@@ -928,6 +983,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
       ADVANCE(CHECK_NOT_BACK_REF_NO_CASE_BACKWARD);
       coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+      ASSERT_MAXTOTAL();
       // ------- (end) mod_mcl_2020 -------
       DISPATCH();
     }
@@ -939,6 +995,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_AT_START);
         coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        ASSERT_MAXTOTAL();
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -949,6 +1006,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_NOT_AT_START);
         coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        ASSERT_MAXTOTAL();
         // ------- (end) mod_mcl_2020 -------
       } else {
         SET_PC_FROM_OFFSET(Load32Aligned(pc + 4));
@@ -974,6 +1032,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
         uintptr_t prev_pc = reinterpret_cast<const uintptr_t>(pc);
         ADVANCE(CHECK_CURRENT_POSITION);
         coverage_tracker->Cover(prev_pc, reinterpret_cast<const uintptr_t>(pc));
+        ASSERT_MAXTOTAL();
         // ------- (end) mod_mcl_2020 -------
       }
       DISPATCH();
@@ -985,12 +1044,14 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       while (static_cast<uintptr_t>(current + load_offset) <
              static_cast<uintptr_t>(subject.length())) {
         current_char = subject[current + load_offset];
+        coverage_tracker->Observe(current + load_offset); // ------- mod_mcl_2020 -------
         current_char_src = current + load_offset; // ------- mod_mcl_2020 -------
         if (c == current_char) {
           SET_PC_FROM_OFFSET(Load32Aligned(pc + 8));
           DISPATCH();
         }
         coverage_tracker->Cover(reinterpret_cast<uintptr_t>(pc)); // ------- mod_mcl_2020 -------
+        ASSERT_MAXTOTAL();
         current += advance;
       }
       SET_PC_FROM_OFFSET(Load32Aligned(pc + 12));
@@ -1005,12 +1066,14 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       while (static_cast<uintptr_t>(current + maximum_offset) <=
              static_cast<uintptr_t>(subject.length())) {
         current_char = subject[current + load_offset];
+        coverage_tracker->Observe(current + load_offset); // ------- mod_mcl_2020 -------
         current_char_src = current + load_offset; // ------- mod_mcl_2020 -------
         if (c == (current_char & mask)) {
           SET_PC_FROM_OFFSET(Load32Aligned(pc + 16));
           DISPATCH();
         }
         coverage_tracker->Cover(reinterpret_cast<uintptr_t>(pc)); // ------- mod_mcl_2020 -------
+        ASSERT_MAXTOTAL();
         current += advance;
       }
       SET_PC_FROM_OFFSET(Load32Aligned(pc + 20));
@@ -1024,12 +1087,14 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       while (static_cast<uintptr_t>(current + maximum_offset) <=
              static_cast<uintptr_t>(subject.length())) {
         current_char = subject[current + load_offset];
+        coverage_tracker->Observe(current + load_offset); // ------- mod_mcl_2020 -------
         current_char_src = current + load_offset; // ------- mod_mcl_2020 -------
         if (c == current_char) {
           SET_PC_FROM_OFFSET(Load32Aligned(pc + 12));
           DISPATCH();
         }
         coverage_tracker->Cover(reinterpret_cast<uintptr_t>(pc)); // ------- mod_mcl_2020 -------
+        ASSERT_MAXTOTAL();
         current += advance;
       }
       SET_PC_FROM_OFFSET(Load32Aligned(pc + 16));
@@ -1042,12 +1107,14 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       while (static_cast<uintptr_t>(current + load_offset) <
              static_cast<uintptr_t>(subject.length())) {
         current_char = subject[current + load_offset];
+        coverage_tracker->Observe(current + load_offset); // ------- mod_mcl_2020 -------
         current_char_src = current + load_offset; // ------- mod_mcl_2020 -------
         if (CheckBitInTable(current_char, table)) {
           SET_PC_FROM_OFFSET(Load32Aligned(pc + 24));
           DISPATCH();
         }
         coverage_tracker->Cover(reinterpret_cast<uintptr_t>(pc)); // ------- mod_mcl_2020 -------
+        ASSERT_MAXTOTAL();
         current += advance;
       }
       SET_PC_FROM_OFFSET(Load32Aligned(pc + 28));
@@ -1061,6 +1128,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       while (static_cast<uintptr_t>(current + load_offset) <
              static_cast<uintptr_t>(subject.length())) {
         current_char = subject[current + load_offset];
+        coverage_tracker->Observe(current + load_offset); // ------- mod_mcl_2020 -------
         current_char_src = current + load_offset; // ------- mod_mcl_2020 -------
         if (current_char > limit) {
           SET_PC_FROM_OFFSET(Load32Aligned(pc + 24));
@@ -1071,6 +1139,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
           DISPATCH();
         }
         coverage_tracker->Cover(reinterpret_cast<uintptr_t>(pc)); // ------- mod_mcl_2020 -------
+        ASSERT_MAXTOTAL();
         current += advance;
       }
       SET_PC_FROM_OFFSET(Load32Aligned(pc + 28));
@@ -1084,6 +1153,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
       while (static_cast<uintptr_t>(current + load_offset) <
              static_cast<uintptr_t>(subject.length())) {
         current_char = subject[current + load_offset];
+        coverage_tracker->Observe(current + load_offset); // ------- mod_mcl_2020 -------
         current_char_src = current + load_offset; // ------- mod_mcl_2020 -------
         // The two if-statements below are split up intentionally, as combining
         // them seems to result in register allocation behaving quite
@@ -1097,6 +1167,7 @@ IrregexpInterpreter::Result RawMatch(Isolate* isolate, ByteArray code_array,
           DISPATCH();
         }
         coverage_tracker->Cover(reinterpret_cast<uintptr_t>(pc)); // ------- mod_mcl_2020 -------
+        ASSERT_MAXTOTAL();
         current += advance;
       }
       SET_PC_FROM_OFFSET(Load32Aligned(pc + 16));
@@ -1142,6 +1213,7 @@ IrregexpInterpreter::Result IrregexpInterpreter::Match(
     registers_length,
     start_position,
     call_origin,
+    -1,
     nullptr
   );
 }
@@ -1149,7 +1221,7 @@ IrregexpInterpreter::Result IrregexpInterpreter::Match(
 IrregexpInterpreter::Result IrregexpInterpreter::Match(
     Isolate* isolate, JSRegExp regexp, String subject_string, int* registers,
     int registers_length, int start_position, RegExp::CallOrigin call_origin,
-    regulator::fuzz::CoverageTracker *coverage_tracker) {
+    int32_t max_total, regulator::fuzz::CoverageTracker *coverage_tracker) {
   if (FLAG_regexp_tier_up) {
     regexp.TierUpTick();
   }
@@ -1160,7 +1232,7 @@ IrregexpInterpreter::Result IrregexpInterpreter::Match(
   return MatchInternal(isolate, code_array, subject_string, registers,
                        registers_length, start_position, call_origin,
                        regexp.BacktrackLimit(),
-                       coverage_tracker);
+                       max_total, coverage_tracker);
 }
 
 IrregexpInterpreter::Result IrregexpInterpreter::MatchInternal(
@@ -1176,6 +1248,7 @@ IrregexpInterpreter::Result IrregexpInterpreter::MatchInternal(
     start_position,
     call_origin,
     backtrack_limit,
+    -1,
     nullptr
   );
 }
@@ -1184,7 +1257,7 @@ IrregexpInterpreter::Result IrregexpInterpreter::MatchInternal(
     Isolate* isolate, ByteArray code_array, String subject_string,
     int* registers, int registers_length, int start_position,
     RegExp::CallOrigin call_origin, uint32_t backtrack_limit,
-    regulator::fuzz::CoverageTracker *coverage_tracker) {
+    int32_t max_total, regulator::fuzz::CoverageTracker *coverage_tracker) {
 
 // ------- (end) mod_mcl_2020 -------
 
@@ -1211,14 +1284,14 @@ IrregexpInterpreter::Result IrregexpInterpreter::MatchInternal(
     if (start_position != 0) previous_char = subject_vector[start_position - 1];
     return RawMatch(isolate, code_array, subject_string, subject_vector,
                     registers, start_position, previous_char, call_origin,
-                    backtrack_limit, coverage_tracker, registers_length);
+                    backtrack_limit, max_total, coverage_tracker, registers_length);
   } else {
     DCHECK(subject_content.IsTwoByte());
     Vector<const uc16> subject_vector = subject_content.ToUC16Vector();
     if (start_position != 0) previous_char = subject_vector[start_position - 1];
     return RawMatch(isolate, code_array, subject_string, subject_vector,
                     registers, start_position, previous_char, call_origin,
-                    backtrack_limit, coverage_tracker, registers_length);
+                    backtrack_limit, max_total, coverage_tracker, registers_length);
   }
 }
 
@@ -1285,6 +1358,7 @@ IrregexpInterpreter::Result IrregexpInterpreter::MatchForCallFromRuntime(
     registers,
     registers_length,
     start_position,
+    -1,
     nullptr
   );
 }
@@ -1292,9 +1366,9 @@ IrregexpInterpreter::Result IrregexpInterpreter::MatchForCallFromRuntime(
 IrregexpInterpreter::Result IrregexpInterpreter::MatchForCallFromRuntime(
     Isolate* isolate, Handle<JSRegExp> regexp, Handle<String> subject_string,
     int* registers, int registers_length, int start_position,
-    regulator::fuzz::CoverageTracker *coverage_tracker) {
+    int32_t max_total, regulator::fuzz::CoverageTracker *coverage_tracker) {
   return Match(isolate, *regexp, *subject_string, registers, registers_length,
-               start_position, RegExp::CallOrigin::kFromRuntime, coverage_tracker);
+               start_position, RegExp::CallOrigin::kFromRuntime, max_total, coverage_tracker);
 }
 // ------- (end) mod_mcl_2020 -------
 

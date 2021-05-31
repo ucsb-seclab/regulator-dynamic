@@ -8,6 +8,8 @@
 #include <iostream>
 #include <iomanip>
 #include <sstream>
+#include <chrono>
+
 
 namespace regulator
 {
@@ -85,7 +87,14 @@ std::string CorpusEntry<Char>::ToString() const
         }
         else
         {
-            out << "\\x";
+            if (sizeof(Char) == 1)
+            {
+                out << "\\x";
+            }
+            else
+            {
+                out << "\\u";
+            }
             out << std::setw(sizeof(Char) * 2) << std::setfill('0') << std::hex
                 << static_cast<uint32_t>(c);
             out << std::dec << std::setw(0) << std::setfill(' ');
@@ -93,6 +102,7 @@ std::string CorpusEntry<Char>::ToString() const
     }
     out << std::dec;
     out << "\" Total=" << this->coverage_tracker->Total();
+    out << " MaxObservation=" << this->coverage_tracker->MaxObservation();
 
     // shorten path hash into 32 bits (from 128) by XOR-ing the parts
     path_hash_t hash = this->coverage_tracker->PathHash();
@@ -115,7 +125,7 @@ std::string CorpusEntry<Char>::ToString() const
 template<typename Char>
 Corpus<Char>::Corpus()
 {
-    this->coverage_upper_bound = new CoverageTracker();
+    this->coverage_upper_bound = new CoverageTracker(0);
     this->maximizing_entry = nullptr;
     this->extra_interesting = new std::vector<Char>();
     memset(this->staleness, 0, sizeof(this->staleness));
@@ -154,6 +164,11 @@ void Corpus<Char>::Record(CorpusEntry<Char> *entry)
         // this is the new maximizing entry
         delete this->maximizing_entry;
         this->maximizing_entry = new CorpusEntry<Char>(*entry);
+        // TODO remove me
+        auto now = std::chrono::high_resolution_clock::now();
+        std::cout << "NEW_MAXIMIZING_ENTRY " <<
+            std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count() <<
+            " " << this->maximizing_entry->ToString() << std::endl;
     }
 }
 

@@ -38,6 +38,7 @@ bool ExtractInteresting(
         subject,
         sizeof(subject) / sizeof(Char),
         exec_result,
+        -1,
         sizeof(Char) == 1 ? e::kOnlyOneByte : e::kOnlyTwoByte
     );
 
