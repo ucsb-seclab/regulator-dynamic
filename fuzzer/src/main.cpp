@@ -6,6 +6,9 @@
 #include "regexp-executor.hpp"
 #include "fuzz-driver.hpp"
 #include "flags.hpp"
+#if defined REG_COUNT_PATHLENGTH
+#include "count-lengths.hpp"
+#endif
 
 using namespace std;
 
@@ -50,11 +53,24 @@ int main(int argc, char* argv[])
         exit(15);
     }
 
+#if defined REG_COUNT_PATHLENGTH
+    if (args.count_paths)
+    {
+        std::cerr << "Counting maximum path; feed base64 lines now" << std::endl;
+        if (args.fuzz_two_byte)
+        {
+            std::cerr << "Two-byte currently not supported" << std::endl;
+            exit(1);
+        }
+        regulator::loop_count_lengths(args, regexp, 1);
+        exit(0);
+    }
+#endif
+
     if (f::FLAG_debug)
     {
         std::cout << "DEBUG Compiled, beginning fuzz" << std::endl;
     }
-
 
     uint64_t status = regulator::fuzz::Fuzz(
         isolate,

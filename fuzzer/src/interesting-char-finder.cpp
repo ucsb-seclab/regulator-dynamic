@@ -39,6 +39,9 @@ bool ExtractInteresting(
         sizeof(subject) / sizeof(Char),
         exec_result,
         -1,
+#if defined REG_COUNT_PATHLENGTH
+        UINT64_MAX,
+#endif
         sizeof(Char) == 1 ? e::kOnlyOneByte : e::kOnlyTwoByte
     );
 

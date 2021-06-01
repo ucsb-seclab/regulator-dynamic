@@ -37,7 +37,11 @@ class V8_EXPORT_PRIVATE IrregexpInterpreter : public AllStatic {
                                         Handle<String> subject_string,
                                         int* registers, int registers_length,
                                         int start_position,
-                                        int32_t max_total, regulator::fuzz::CoverageTracker *coverage_tracker);
+                                        int32_t max_total,
+#if defined REG_COUNT_PATHLENGTH
+                                        uint64_t max_path,
+#endif
+                                        regulator::fuzz::CoverageTracker *coverage_tracker);
   
   static Result MatchForCallFromRuntime(Isolate* isolate,
                                         Handle<JSRegExp> regexp,
@@ -73,7 +77,11 @@ class V8_EXPORT_PRIVATE IrregexpInterpreter : public AllStatic {
                               int registers_length, int start_position,
                               RegExp::CallOrigin call_origin,
                               uint32_t backtrack_limit,
-                              int32_t max_total, regulator::fuzz::CoverageTracker *coverage_tracker);
+                              int32_t max_total,
+#if defined REG_COUNT_PATHLENGTH
+                              uint64_t max_path,
+#endif
+                              regulator::fuzz::CoverageTracker *coverage_tracker);
 
   // ------- (end) mod_mcl_2020 -------
 
@@ -83,8 +91,11 @@ class V8_EXPORT_PRIVATE IrregexpInterpreter : public AllStatic {
 
   static Result Match(Isolate* isolate, JSRegExp regexp, String subject_string,
                       int* registers, int registers_length, int start_position,
-                      RegExp::CallOrigin call_origin,
-                      int32_t max_total, regulator::fuzz::CoverageTracker *coverage_tracker);
+                      RegExp::CallOrigin call_origin, int32_t max_total,
+#if defined REG_COUNT_PATHLENGTH
+                      uint64_t max_path,
+#endif
+                      regulator::fuzz::CoverageTracker *coverage_tracker);
 
   static Result Match(Isolate* isolate, JSRegExp regexp, String subject_string,
                       int* registers, int registers_length, int start_position,

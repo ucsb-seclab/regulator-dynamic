@@ -34,6 +34,11 @@ public:
      */
     std::string flags;
 
+#if defined REG_COUNT_PATHLENGTH
+    bool count_paths;
+    uint64_t max_path;
+#endif
+
     /**
      * The string length to fuzz
      */

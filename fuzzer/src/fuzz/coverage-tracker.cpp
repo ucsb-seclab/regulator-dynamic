@@ -110,6 +110,9 @@ uint64_t CoverageTracker::Total()
 void CoverageTracker::Clear()
 {
     this->path_hash = 0;
+#if defined REG_COUNT_PATHLENGTH
+    this->path_length = 0;
+#endif
     this->total = 0;
     memset(this->covmap, 0, MAP_SIZE * sizeof(cov_t));
     if (this->char_observation_counts != nullptr)
@@ -305,6 +308,22 @@ uint16_t CoverageTracker::MaxObservation() const
     }
     return max;
 }
+
+#if defined REG_COUNT_PATHLENGTH
+uint64_t CoverageTracker::PathLength() const
+{
+    return this->path_length;
+}
+
+/**
+ * Increment the path length count
+ */
+void CoverageTracker::IncPathLength()
+{
+    auto prev = this->path_length;
+    this->path_length = std::max((uint64_t)(prev + 1), prev);
+}
+#endif
 
 }
 }

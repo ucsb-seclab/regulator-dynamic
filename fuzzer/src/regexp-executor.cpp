@@ -272,6 +272,9 @@ Result Exec(
     size_t subject_len,
     V8RegExpResult &out,
     int32_t max_total,
+#if defined REG_COUNT_PATHLENGTH
+    uint64_t max_path,
+#endif
     EnforceRepresentation rep)
 {
     // Following set-up seen at v8 file fuzzer/regexp.cc
@@ -358,6 +361,9 @@ Result Exec(
         0,
         match_info,
         max_total,
+#if defined REG_COUNT_PATHLENGTH
+        max_path,
+#endif
         out.coverage_tracker.get()
     );
 
@@ -405,6 +411,9 @@ Result Exec<uint8_t>(
     size_t subject_len,
     V8RegExpResult &out,
     int32_t max_total,
+#if defined REG_COUNT_PATHLENGTH
+    uint64_t max_path,
+#endif
     EnforceRepresentation rep);
 
 template
@@ -414,6 +423,9 @@ Result Exec<uint16_t>(
     size_t subject_len,
     V8RegExpResult &out,
     int32_t max_total,
+#if defined REG_COUNT_PATHLENGTH
+    uint64_t max_path,
+#endif
     EnforceRepresentation rep);
 
 }

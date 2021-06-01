@@ -89,8 +89,11 @@ Result Exec(
     const Char *subject,
     size_t subject_lens,
     V8RegExpResult &out,
-    int32_t max_total = -1,
-    EnforceRepresentation rep = kAnyRepresentation);
+    int32_t max_total,
+#if defined REG_COUNT_PATHLENGTH
+    uint64_t max_path,
+#endif
+    EnforceRepresentation rep);
 
 }
 }

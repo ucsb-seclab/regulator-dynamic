@@ -8,43 +8,12 @@
 #include "cxxopts.hpp"
 #include "flags.hpp"
 #include "version.hpp"
+#include "util.hpp"
 
 using namespace std;
 
 namespace regulator
 {
-
-inline static bool base64_decode(const std::string &in, uint8_t *&out, size_t &outlen) {
-    // adapted from https://stackoverflow.com/a/13935718
-    std::vector<uint8_t> vout;
-
-    std::vector<int> T(256,-1);
-    for (int i=0; i<64; i++) T["ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"[i]] = i; 
-
-    int val=0, valb=-8;
-    for (uint8_t c : in) {
-        if (T[c] == -1) break;
-        val = (val<<6) + T[c];
-        valb += 6;
-        if (valb>=0) {
-            vout.push_back(char((val>>valb)&0xFF));
-            valb-=8;
-        }
-    }
-
-    out = new uint8_t[vout.size() + 1];
-    for (size_t i=0; i < vout.size(); i++)
-    {
-        out[i] = vout[i];
-    }
-
-    out[vout.size()] = 0;
-
-    outlen = vout.size();
-
-    return true;
-}
-
 
 ParsedArguments ParsedArguments::Parse(int argc, char **argv)
 {
@@ -53,6 +22,10 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
     cxxopts::Options options(argv[0], "Regexp catastrophic backtracking fuzzer");
     options.add_options()
         ("v,version", "Print version", cxxopts::value<bool>()->default_value("False"))
+#if defined REG_COUNT_PATHLENGTH
+        ("count-paths", "base64 subjects line-by-line from stdin continuously, recording max path", cxxopts::value<bool>()->default_value("False"))
+        ("maxpath", "the maximum path length when testing continuously", cxxopts::value<uint64_t>())
+#endif
         ("f,flags", "Regexp flags", cxxopts::value<std::string>()->default_value(""))
         ("r,regexp", "The regexp to fuzz, as an ascii string", cxxopts::value<std::string>())
         ("b,bregexp", "The regexp to fuzz, as a base64 utf8 string", cxxopts::value<std::string>())
@@ -79,27 +52,6 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
     {
         std::cout << "Regulator v" << VERSION << std::endl;
         exit(0);
-    }
-
-    if (parsed["textseed"].count() > 0)
-    {
-        std::string allseeds = parsed["textseed"].as<std::string>();
-        size_t last_idx = 0;
-        while (last_idx < allseeds.size())
-        {
-            size_t next_sep = allseeds.find("|||", last_idx);
-
-            if (next_sep == std::string::npos)
-            {
-                next_sep = allseeds.size();
-            }
-
-            std::string this_seed = allseeds.substr(last_idx, (next_sep - last_idx));
-            std::cout << "using text seed: " << this_seed << std::endl;
-            ret.seeds.push_back(this_seed);
-
-            last_idx = next_sep + 3;
-        }
     }
 
     if (parsed["regexp"].count() > 0)
@@ -130,13 +82,60 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
         exit(1);
     }
 
+    std::string byte_widths = parsed["widths"].as<std::string>();
+    if (byte_widths == "1")
+    {
+        ret.fuzz_one_byte = true;
+        ret.fuzz_two_byte = false;
+    }
+    else if (byte_widths == "2")
+    {
+        ret.fuzz_one_byte = false;
+        ret.fuzz_two_byte = true;
+    }
+    else if (byte_widths == "" || byte_widths == "1,2" || byte_widths == "2,1")
+    {
+        ret.fuzz_one_byte = true;
+        ret.fuzz_two_byte = true;
+    }
+    else
+    {
+        std::cerr << "ERROR: unknown widths argument: " << byte_widths << std::endl;
+        exit(1);
+    }
+
     ret.flags = parsed["flags"].as<std::string>();
+
+#if defined REG_COUNT_PATHLENGTH
+    if (parsed["count-paths"].as<bool>())
+    {
+        ret.count_paths = true;
+        if (ret.fuzz_one_byte && ret.fuzz_two_byte)
+        {
+            std::cerr << "Cannot handle one AND two byte read continuously" << std::endl;
+            exit(1);
+        }
+        if (parsed["maxpath"].count() > 0)
+        {
+            ret.max_path = parsed["maxpath"].as<uint64_t>();
+        }
+        else
+        {
+            std::cerr << "maxpath required when reading continuously" << std::endl;
+            exit(1);
+        }
+        return ret;
+    }
+    else
+    {
+        ret.count_paths = false;
+    }
+#endif
+
     ret.num_threads = parsed["threads"].as<uint16_t>();
     ret.max_total = parsed["maxtot"].as<int32_t>();
-    ret.fuzz_one_byte = true;
-    ret.fuzz_two_byte = true;
-
     ret.timeout_secs = -1;
+
     if (parsed["timeout"].count() > 0)
     {
         ret.timeout_secs = parsed["timeout"].as<int32_t>();
@@ -147,6 +146,27 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
             std::cerr << std::endl;
             std::cerr << options.help() << std::endl;
             exit(1);
+        }
+    }
+
+    if (parsed["textseed"].count() > 0)
+    {
+        std::string allseeds = parsed["textseed"].as<std::string>();
+        size_t last_idx = 0;
+        while (last_idx < allseeds.size())
+        {
+            size_t next_sep = allseeds.find("|||", last_idx);
+
+            if (next_sep == std::string::npos)
+            {
+                next_sep = allseeds.size();
+            }
+
+            std::string this_seed = allseeds.substr(last_idx, (next_sep - last_idx));
+            std::cout << "using text seed: " << this_seed << std::endl;
+            ret.seeds.push_back(this_seed);
+
+            last_idx = next_sep + 3;
         }
     }
 
@@ -215,28 +235,6 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
             std::cerr << options.help() << std::endl;
             exit(1);
         }
-    }
-
-    std::string byte_widths = parsed["widths"].as<std::string>();
-    if (byte_widths == "1")
-    {
-        ret.fuzz_one_byte = true;
-        ret.fuzz_two_byte = false;
-    }
-    else if (byte_widths == "2")
-    {
-        ret.fuzz_one_byte = false;
-        ret.fuzz_two_byte = true;
-    }
-    else if (byte_widths == "" || byte_widths == "1,2" || byte_widths == "2,1")
-    {
-        ret.fuzz_one_byte = true;
-        ret.fuzz_two_byte = true;
-    }
-    else
-    {
-        std::cerr << "ERROR: unknown widths argument: " << byte_widths << std::endl;
-        exit(1);
     }
 
     uint32_t seed = parsed["seed"].as<uint32_t>();

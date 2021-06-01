@@ -300,6 +300,9 @@ inline bool seed_corpus(
         strlen,
         result,
         -1,
+#if defined REG_COUNT_PATHLENGTH
+        UINT64_MAX,
+#endif
         regulator::executor::kOnlyOneByte
     );
 
@@ -343,6 +346,9 @@ inline bool seed_corpus(
             strlen,
             result,
             -1,
+#if defined REG_COUNT_PATHLENGTH
+            UINT64_MAX,
+#endif
             regulator::executor::kOnlyOneByte
         );
 
@@ -459,6 +465,9 @@ inline bool evaluate_child(
         strlen,
         result,
         campaign->max_total,
+#if defined REG_COUNT_PATHLENGTH
+        UINT64_MAX,
+#endif
         enforce_encoding
     );
 

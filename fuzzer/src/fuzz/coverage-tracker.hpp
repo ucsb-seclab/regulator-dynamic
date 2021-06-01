@@ -226,6 +226,18 @@ public:
      */
     uint16_t MaxObservation() const;
 
+#if defined REG_COUNT_PATHLENGTH
+    /**
+     * Get the number of instructions executed
+     */
+    uint64_t PathLength() const;
+
+    /**
+     * Increment the path length count
+     */
+    void IncPathLength();
+#endif
+
 private:
     cov_t *covmap;
     std::vector<struct suggestion> suggestions;
@@ -233,6 +245,9 @@ private:
     path_hash_t path_hash;
     uint32_t string_length;
     uint16_t *char_observation_counts;
+#if defined REG_COUNT_PATHLENGTH
+    uint64_t path_length;
+#endif
 };
 
 }
