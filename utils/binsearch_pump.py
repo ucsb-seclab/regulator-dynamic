@@ -2,6 +2,7 @@
 Binary-search for 10s slow-down
 """
 
+import signal
 import ast
 import math
 import traceback
@@ -27,6 +28,7 @@ load_dotenv()
 parser = argparse.ArgumentParser()
 parser.add_argument('--cores', type=str, help='Comma-separated list of cores to use (ranges okay too)')
 parser.add_argument('--debug', action='store_true')
+parser.add_argument('--wait', action='store_true', help='Sleep-wait for more work')
 
 args = parser.parse_args()
 
@@ -62,20 +64,14 @@ print('[*] connected to postgresql')
 
 curr = db.cursor()
 
-# do pump results 
-curr.execute(
-    """
-select rgf.id
-from unified_regexps r
-join regexps_fuzz_results rfr on rfr.regexp_id = r.id and rfr.length = 200
-join regexps_guess_pump_from_fuzz3 rgf ON rgf.fuzz_result_id = rfr.id and rgf.pump_string is not null
-where rgf.id not in (select guess_pump_id from regexps_guess_pump_length_results3)
-    AND rgf.classifier_version = 1
-order by r.id desc
-""")
+stop = False
+def handle_sighup(*_):
+    global stop
+    print('[*] got SIGHUP, requesting stop')
+    stop = True
+signal.signal(signal.SIGHUP, handle_sighup)
 
-work_queue = curr.fetchall()
-print(f'[*] {len(work_queue)} items in work queue')
+# do pump results 
 global_lock = threading.Lock()
 
 single_exec_tester = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'time_exec.js')
@@ -190,26 +186,31 @@ def test_pump_by_target_len(
 def do_work():
     my_curr = db.cursor()
 
-    while True:
+    while not stop:
+        should_wait = False
         with global_lock:
-            if len(work_queue) == 0:
-                print('[*] work finished')
-                break
-            (rgf_id,) = work_queue.pop()
             my_cpu = avail_cpus.pop()
+            my_curr.execute(
+                """
+                select rgf.id, r.pattern, r.flags, rfr.witness, rfr.char_width, rgf.pump_string, rgf.pump_pos, rgf.pump_len
+                from unified_regexps r
+                join regexps_fuzz_results rfr on rfr.regexp_id = r.id and rfr.length = 200
+                join regexps_guess_pump_from_fuzz3 rgf ON rgf.fuzz_result_id = rfr.id and rgf.pump_string is not null
+                join fuzz_work_queue fwq on fwq.id = rfr.fuzz_queue_id
+                where rgf.id not in (select guess_pump_id from regexps_guess_pump_length_results3)
+                    AND rgf.classifier_version >= 2
+                order by fwq.priority desc, RANDOM()
+            """)
 
-        my_curr.execute(
-            """
-                SELECT r.pattern, r.flags, rfr.witness, rfr.char_width, rgf.pump_string, rgf.pump_pos, rgf.pump_len
-                FROM unified_regexps r
-                JOIN regexps_fuzz_results rfr on rfr.regexp_id = r.id
-                JOIN regexps_guess_pump_from_fuzz3 rgf on rgf.fuzz_result_id = rfr.id
-                WHERE rgf.id = %s
-                LIMIT 1
-            """,
-            (rgf_id,)
-        )
-        pattern, flags, witness, char_width, pump_string, pump_pos, pump_len = my_curr.fetchone()
+            maybe_row = my_curr.fetchone()
+            if maybe_row is None:
+                should_wait = args.wait
+            else:
+                rgf_id, pattern, flags, witness, char_width, pump_string, pump_pos, pump_len = maybe_row
+        if should_wait:
+            time.sleep(180)
+            continue
+        
         pattern: bytes = pattern.tobytes()
         flags: bytes = flags.tobytes()
         pump_string: bytes = pump_string.tobytes()
