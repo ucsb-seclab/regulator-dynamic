@@ -189,25 +189,30 @@ def do_work():
     while not stop:
         should_wait = False
         with global_lock:
-            my_cpu = avail_cpus.pop()
             my_curr.execute(
                 """
                 select rgf.id, r.pattern, r.flags, rfr.witness, rfr.char_width, rgf.pump_string, rgf.pump_pos, rgf.pump_len
                 from unified_regexps r
                 join regexps_fuzz_results rfr on rfr.regexp_id = r.id and rfr.length = 200
                 join regexps_guess_pump_from_fuzz3 rgf ON rgf.fuzz_result_id = rfr.id and rgf.pump_string is not null
-                join fuzz_work_queue fwq on fwq.id = rfr.fuzz_queue_id
+                left join fuzz_work_queue fwq on fwq.id = rfr.fuzz_queue_id
                 where rgf.id not in (select guess_pump_id from regexps_guess_pump_length_results3)
                     AND rgf.classifier_version >= 2
                 order by fwq.priority desc, RANDOM()
+                limit 1
             """)
 
             maybe_row = my_curr.fetchone()
             if maybe_row is None:
-                should_wait = args.wait
+                if args.wait:
+                    should_wait = True
+                else:
+                    return
             else:
                 rgf_id, pattern, flags, witness, char_width, pump_string, pump_pos, pump_len = maybe_row
+                my_cpu = avail_cpus.pop()
         if should_wait:
+            print('[*] waiting for more results...')
             time.sleep(180)
             continue
         
