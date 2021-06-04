@@ -3,7 +3,7 @@
 
 namespace regulator
 {
-    bool base64_decode(const std::string &in, uint8_t *&out, size_t &outlen) {
+    bool base64_decode_one_byte(const std::string &in, uint8_t *&out, size_t &outlen) {
         // adapted from https://stackoverflow.com/a/13935718
         std::vector<uint8_t> vout;
 
@@ -34,13 +34,13 @@ namespace regulator
         return true;
     }
 
-    bool base64_decode(const std::string &in, uint16_t *&out, size_t &outlen)
+    bool base64_decode_two_byte(const std::string &in, uint16_t *&out, size_t &outlen)
     {
         // UNTESTED
         uint8_t *tmp;
         size_t tmplen;
-        base64_decode(in, tmp, outlen);
-        if (outlen % 2 != 0)
+        base64_decode_one_byte(in, tmp, tmplen);
+        if (tmplen % 2 != 0)
         {
             // cannot use odd-length data
             delete[] tmp;

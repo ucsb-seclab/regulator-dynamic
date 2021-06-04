@@ -66,7 +66,7 @@ ParsedArguments ParsedArguments::Parse(int argc, char **argv)
     else if (parsed["bregexp"].count() > 0)
     {
         std::string regexp = parsed["bregexp"].as<std::string>();
-        if (!base64_decode(regexp, ret.target_regex, ret.target_regex_len))
+        if (!base64_decode_one_byte(regexp, ret.target_regex, ret.target_regex_len))
         {
             std::cerr << "Could not decode base64" << std::endl;
             std::cerr << std::endl;

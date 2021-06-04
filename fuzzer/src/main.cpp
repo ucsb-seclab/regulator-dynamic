@@ -59,10 +59,12 @@ int main(int argc, char* argv[])
         std::cerr << "Counting maximum path; feed base64 lines now" << std::endl;
         if (args.fuzz_two_byte)
         {
-            std::cerr << "Two-byte currently not supported" << std::endl;
-            exit(1);
+            regulator::loop_count_lengths(args, regexp, 2);
         }
-        regulator::loop_count_lengths(args, regexp, 1);
+        else
+        {
+            regulator::loop_count_lengths(args, regexp, 1);
+        }
         exit(0);
     }
 #endif
