@@ -30,6 +30,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--logdir', type=str, help='Path to pump logs for caching reruns', required=True)
 parser.add_argument('--cores', type=str, help='Comma-separated list of cores to use (ranges okay too)')
 parser.add_argument('--wait', action='store_true', help='busy-wait for more work rather than exit')
+parser.add_argument('--inscount', type=str, required=False, help='where to find inscount binary', default='./inscount')
 parser.add_argument('--debug', action='store_true')
 
 args = parser.parse_args()
@@ -91,8 +92,8 @@ def decode_witness_two_byte(s: str) -> bytes:
     while i < len(s):
         c = s[i]
         if c == '\\' and s[i+1] == 'u':
-            b1 = int(s[i+2:i+4], 'hex')
-            b2 = int(s[i+4:i+6], 'hex')
+            b1 = int(s[i+2:i+4], 16)
+            b2 = int(s[i+4:i+6], 16)
             # load as little-endian
             b += bytes([b2, b1])
             i += 6
@@ -111,10 +112,10 @@ def decode_witness_two_byte(s: str) -> bytes:
         else:
             assert  ' ' <= c <= '~'
             b += bytes([ord(c), 0])
-            i += 2
+            i += 1
     return b
 
-bin_inscount = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'inscount')
+bin_inscount = os.path.abspath(args.inscount)
 if not os.path.isfile(bin_inscount):
     print('Could not find', bin_inscount)
 
@@ -194,11 +195,10 @@ def sample_inscount(
     return (sampler, int(ret))
 
 def pump_witness(witness, pump_pos, pump_len, width, times) -> bytes:
-    assert width == 1
-    assert pump_len <= len(witness)
-    before = witness[: pump_pos]
-    after = witness[pump_pos + pump_len:]
-    pump = witness[pump_pos : pump_pos + pump_len]
+    assert pump_len <= len(witness) // width
+    before = witness[: pump_pos * width]
+    after = witness[(pump_pos + pump_len) * width:]
+    pump = witness[pump_pos * width : (pump_pos + pump_len) * width]
     return before + (pump * times) + after
 
 pump_locs = sorted(map(int, set(np.rint(np.linspace(10, 256, 20)))))
@@ -213,7 +213,6 @@ def report_pump(core, sampler, bregexp, bflags, witness, width, pump_pos, pump_l
     return (sampler, ('FULL', pump_pos, pump_len, ret))
 
 def pump_full_report(core: int, bregexp: bytes, bflags: bytes, witness: bytes, width: int):
-    assert width == 1
     if args.debug:
         print('establishing baseline')
     maybe_baseline = sample_inscount(None, core, bregexp, bflags, witness, width)
@@ -230,11 +229,11 @@ def pump_full_report(core: int, bregexp: bytes, bflags: bytes, witness: bytes, w
         profiles = []
         start = time.time()
         slowest_per_char = 0
-        for pump_len in range(1, len(witness)):
+        for pump_len in range(1, len(witness) // width):
             if args.debug:
-                if pump_len % 20 == 0:
+                if pump_len % 2 == 0:
                     print('pumping substrs of length', pump_len)
-            for pump_pos in reversed(range(0, len(witness) - pump_len)):
+            for pump_pos in reversed(range(0, len(witness) // width - pump_len)):
                 pumped = pump_witness(witness, pump_pos, pump_len, width, 100)
                 sampler, path_length = sample_inscount(sampler, core, bregexp, bflags, pumped, width)
                 if path_length < 0:
@@ -257,6 +256,7 @@ def pump_full_report(core: int, bregexp: bytes, bflags: bytes, witness: bytes, w
 
                     klass = classify([x for x, _ in pts], [y for _, y in pts])
                     if args.debug:
+                        print('klass', klass)
                         if klass[0] == 'POLYNOMIAL' and klass[-1] == False:
                             print('NOT BREAK EARLY')
                     if klass and ((klass[0] == 'EXPONENTIAL') or (klass[0] == 'POLYNOMIAL' and klass[-1] == True)):
@@ -361,7 +361,6 @@ def do_work():
                 WHERE rfr.length = 200
                     AND rfr.max_observations > 4
                     AND fuzzer_version >= 6
-                    AND rfr.char_width = 1
                     AND rfr.id not in (select fuzz_result_id from regexps_guess_pump_from_fuzz3 where classifier_version = %s)
                 order by fwq.priority desc nulls last, RANDOM()
                 limit 1
@@ -400,16 +399,21 @@ def do_work():
             flags = flags.tobytes()
             my_curr.execute("SELECT witness, char_width, length FROM regexps_fuzz_results WHERE id = %s LIMIT 1", (rfr_id,))
             (witness, char_width, l) = my_curr.fetchone()
-            assert char_width in [1]
+            assert char_width in [1, 2]
 
-            # regularize the witness)
-            witness = decode_witness_one_byte(witness)
-            assert len(witness) == l
+            # regularize the witness
+            if char_width == 1:
+                witness = decode_witness_one_byte(witness)
+            elif char_width == 2:
+                witness = decode_witness_two_byte(witness)
+            else:
+                raise Exception('unreachable')
+
+            assert len(witness) / char_width == l, f'witness length was {len(witness)} but expected {l * char_width}'
             if args.debug:
                 print('pumping', pattern, flags)
                 print('witness', witness)
             if not os.path.exists(out_log_fname + '.tar.gz'):
-
                 # encode everything b64
                 start = time.time()
                 report = pump_full_report(
