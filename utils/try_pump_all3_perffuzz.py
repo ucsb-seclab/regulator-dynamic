@@ -114,6 +114,12 @@ def decode_witness_two_byte(s: str) -> bytes:
             i += 2
     return b
 
+def asciify_witness(bs):
+    ret = b''
+    for b in bs:
+        ret += bytes([b & 0x7f])
+    return ret
+
 bin_inscount = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'inscount')
 if not os.path.isfile(bin_inscount):
     print('Could not find', bin_inscount)
@@ -229,7 +235,7 @@ def pump_full_report(core: int, bregexp: bytes, bflags: bytes, witness: bytes, w
     try:
         profiles = []
         start = time.time()
-        slowest_per_char = 0
+        slowest_per_char = 1
         for pump_len in range(1, len(witness)):
             if args.debug:
                 if pump_len % 20 == 0:
@@ -356,15 +362,11 @@ def do_work():
         with global_lock:
             my_curr.execute("""
                 SELECT rfr.regexp_id, rfr.id
-                FROM regexps_fuzz_results rfr
-                left JOIN fuzz_work_queue fwq on fwq.id = rfr.fuzz_queue_id
+                FROM regexps_fuzz_results_perffuzz rfr
+                JOIN unified_regexps r ON rfr.regexp_id = r.id
                 WHERE rfr.length = 200
-                    AND rfr.max_observations > 4
-                    AND fuzzer_version >= 6
-                    AND rfr.char_width = 1
-                    AND rfr.id not in (select fuzz_result_id from regexps_guess_pump_from_fuzz3 where classifier_version = %s)
-                order by fwq.priority desc nulls last, RANDOM()
-                limit 1
+                    AND rfr.id not in (select fuzz_result_id from regexps_guess_pump_from_fuzz2_perffuzz where classifier_version = %s)
+                order by RANDOM()
             """, (PUMPER_VERSION,))
 
             l = my_curr.fetchone()
@@ -384,7 +386,7 @@ def do_work():
             continue
 
         print('id =', id_, 'rfr_id =', rfr_id)
-        out_log_fname = os.path.join(os.path.abspath(args.logdir), f'{rfr_id}.v{PUMPER_VERSION}.out')
+        out_log_fname = os.path.join(os.path.abspath(args.logdir), f'{rfr_id}.perffuzz.v{PUMPER_VERSION}.out')
         klass = ('UNKNOWN', None)
         slowest_pump = None
         slowest_pump_pos = None
@@ -398,13 +400,13 @@ def do_work():
             pattern, flags = my_curr.fetchone()
             pattern = pattern.tobytes()
             flags = flags.tobytes()
-            my_curr.execute("SELECT witness, char_width, length FROM regexps_fuzz_results WHERE id = %s LIMIT 1", (rfr_id,))
+            my_curr.execute("SELECT witness, char_width, length FROM regexps_fuzz_results_perffuzz WHERE id = %s LIMIT 1", (rfr_id,))
             (witness, char_width, l) = my_curr.fetchone()
             assert char_width in [1]
 
             # regularize the witness)
-            witness = decode_witness_one_byte(witness)
-            assert len(witness) == l
+            witness = asciify_witness(witness.tobytes())
+            assert len(witness) <= l
             if args.debug:
                 print('pumping', pattern, flags)
                 print('witness', witness)
@@ -510,18 +512,18 @@ def do_work():
                 else:
                     slowest_pump = None
                 my_curr.execute(
-                    "SELECT 1 FROM regexps_fuzz_results WHERE id=%s FOR UPDATE",
+                    "SELECT 1 FROM regexps_fuzz_results_perffuzz WHERE id=%s FOR UPDATE",
                     (rfr_id,)
                 )
                 # see if someone got to us first (if so, idk, discard us)
                 my_curr.execute(
-                    "SELECT 1 FROM regexps_guess_pump_from_fuzz3 WHERE fuzz_result_id = %s and classifier_version = %s limit 1",
-                    (rfr_id, PUMPER_VERSION)
+                    "SELECT 1 FROM regexps_guess_pump_from_fuzz2_perffuzz WHERE classifier_version = %s and fuzz_result_id = %s limit 1",
+                    (PUMPER_VERSION, rfr_id,)
                 )
                 if my_curr.fetchone() is None:
                     my_curr.execute(
                         """
-                            INSERT INTO regexps_guess_pump_from_fuzz3 (
+                            INSERT INTO regexps_guess_pump_from_fuzz2_perffuzz (
                                 fuzz_result_id,
                                 time_pumping_secs,
                                 pump_string,
@@ -531,11 +533,12 @@ def do_work():
                                 klass,
                                 fail_reason,
                                 inscount_version,
-                                classifier_version
+                                classifier_version,
+                                used_witness
                             )
-                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                         """,
-                        (rfr_id, elapsed, slowest_pump, slowest_pump_pos, slowest_pump_len, None if klass[0] != 'POLYNOMIAL' else klass[2], klass[0], fail_reason, VERSION, PUMPER_VERSION),
+                        (rfr_id, elapsed, slowest_pump, slowest_pump_pos, slowest_pump_len, None if klass[0] != 'POLYNOMIAL' else klass[2], klass[0], fail_reason, VERSION, PUMPER_VERSION, witness),
                     )
                 db.commit()
             avail_cpus.append(my_cpu)

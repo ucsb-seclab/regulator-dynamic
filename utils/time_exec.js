@@ -24,6 +24,7 @@ rl.on('line', (line) => {
     const num_pumps = parsed.num_pumps;
     const times = parsed.times;
     const regexp = new RegExp(pattern, flags);
+    console.log(regexp);
     
     console.log('WARMING_UP');
     // warm-up the regex
