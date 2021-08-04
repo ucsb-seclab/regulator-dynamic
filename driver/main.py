@@ -247,17 +247,18 @@ def main():
         witness = None
         witness_score = 0
         current_length = args.length
+        maxtot = 1_000_000
+        n_backoffs = 0
         while True:
             #
             # Start the fuzzer
-            curr_maxtot = 1_000_000
             p = await asyncio.create_subprocess_exec(
                 fuzzer_binary,
                 '--bregexp', b64_regex,
                 '--lengths', str(current_length),
                 '--widths', str(args.width),
                 '--timeout', str(int(args.ftime / 1000) + 30),
-                '--maxtot', str(curr_maxtot),
+                '--maxtot', str(maxtot),
                 *flags,
                 stderr=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
@@ -268,7 +269,7 @@ def main():
             # read loop over each line, respecting deadline
             # at the end of this loop the process is assumed dead
             my_witness = None
-            my_witness_score = None
+            my_witness_score = 0
             while True:
                 time_remaining = fuzz_deadline - time.time()
                 if time_remaining <= 0:
@@ -295,7 +296,6 @@ def main():
                     break
                 # ok, we have the line now -- decode (as utf8) and match regex
                 line = line.decode('utf8')
-                # print(line)
                 
                 # see if it matches the early-exit max-total-exceeded
                 tot_exceed_mat = max_tot_exceeded_pat.search(line)
@@ -313,11 +313,29 @@ def main():
                 
                 witness_mat = witness_pat.search(line)
                 if witness_mat is not None:
+                    old_witness_score = my_witness_score
                     my_witness = witness_mat.group(1)
                     my_witness_score = int(witness_mat.group(2))
-                print('line loop', my_witness, my_witness_score)
+                    if old_witness_score < my_witness_score:
+                        l.debug(f'New witness: {my_witness}')
             
-            break
+            # if we exceeded max score or 
+            if n_backoffs == 0 or my_witness_score >= maxtot * 0.70:
+                witness = my_witness
+                witness_score = my_witness_score
+
+            # if there's time left and we bumped against the limit, back-off
+            time_remaining = fuzz_deadline - time.time()
+            if time_remaining > 5 and witness_score >= (maxtot * 0.95):
+                old_len = current_length
+                current_length = (current_length - 20) // 2 + 20
+                if current_length == old_len:
+                    break
+                else:
+                    l.info(f'Backing off [#{n_backoffs}] -- trying length {current_length}')
+                    n_backoffs += 1
+            else:
+                break
 
     asyncio.run(do_fuzz())
 
