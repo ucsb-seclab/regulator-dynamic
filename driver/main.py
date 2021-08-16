@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import argparse
 from asyncio.events import get_event_loop
 import base64
@@ -12,6 +14,7 @@ import logging.handlers
 import io
 import time
 import colored
+import pump
 
 VERSION = 1
 
@@ -242,12 +245,14 @@ def main():
     if flags.strip():
         fuzzer_flags += ['--flags', flags.strip()]
     
+    witness = None
+    witness_score = 0
     async def do_fuzz():
+        nonlocal witness
+        nonlocal witness_score
         fuzz_deadline = time.time() + args.ftime / 1000
-        witness = None
-        witness_score = 0
         current_length = args.length
-        maxtot = 1_000_000
+        maxtot = 500_000
         n_backoffs = 0
         while True:
             #
@@ -259,7 +264,7 @@ def main():
                 '--widths', str(args.width),
                 '--timeout', str(int(args.ftime / 1000) + 30),
                 '--maxtot', str(maxtot),
-                *flags,
+                *fuzzer_flags,
                 stderr=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
             )
@@ -320,7 +325,7 @@ def main():
                         l.debug(f'New witness: {my_witness}')
             
             # if we exceeded max score or 
-            if n_backoffs == 0 or my_witness_score >= maxtot * 0.70:
+            if n_backoffs == 0 or my_witness_score >= maxtot * 0.60:
                 witness = my_witness
                 witness_score = my_witness_score
 
@@ -338,6 +343,24 @@ def main():
                 break
 
     asyncio.run(do_fuzz())
+
+    if witness_score <= 0:
+        l.fatal('witness_score should be positive by now')
+        exit(7)
+
+    l.info(f'Starting pump with witness {witness} for {ptime_sz}')
+
+    deadline = time.time() * 1000 + args.ptime
+
+    pump.fuzzer_binary = fuzzer_binary
+    report = pump.get_pump_report(
+        bregex,
+        flags.strip().encode('ascii'),
+        witness,
+        args.width,
+        deadline
+    )
+    l.info(f'Pump completed, classed as {report["class"]}')
 
 
 if __name__ == '__main__':
