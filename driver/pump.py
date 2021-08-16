@@ -25,40 +25,6 @@ fuzzer_binary = None
 SINGLE_SAMPLE_LIMIT = 10
 TIMEOUT = 60 * 5
 
-def decode_witness_one_byte(s: str) -> bytes:
-    s = s.replace("'", "\\'")
-    s = ast.literal_eval("b'" + s + "'")
-    return s
-
-def decode_witness_two_byte(s: str) -> bytes:
-    b = b''
-    i = 0
-    while i < len(s):
-        c = s[i]
-        if c == '\\' and s[i+1] == 'u':
-            b1 = int(s[i+2:i+4], 16)
-            b2 = int(s[i+4:i+6], 16)
-            # load as little-endian
-            b += bytes([b2, b1])
-            i += 6
-        elif c == '\\' and s[i+1] == '\\':
-            b += bytes([ord('\\'), 0])
-            i += 2
-        elif c == '\\' and s[i+1] == 'r':
-            b += bytes([ord('\r'), 0])
-            i += 2
-        elif c == '\\' and s[i+1] == 't':
-            b += bytes([ord('\t'), 0])
-            i += 2
-        elif c == '\\' and s[i+1] == 'n':
-            b += bytes([ord('\t'), 0])
-            i += 2
-        else:
-            assert  ' ' <= c <= '~'
-            b += bytes([ord(c), 0])
-            i += 1
-    return b
-
 class PathLengthSampler:
     bregexp: bytes
     bflags: bytes
@@ -74,8 +40,9 @@ class PathLengthSampler:
             asyncio.get_event_loop()
         except RuntimeError as e:
             if 'There is no current event loop' in str(e):
-                l = asyncio.new_event_loop()
-                asyncio.set_event_loop(l)
+                l.debug('Spawning new event loop')
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
             else:
                 raise e
         self.bregexp = bregexp
@@ -136,7 +103,6 @@ class PathLengthSampler:
         return int(ret)
     
     def sample(self, bstr: bytes) -> typing.Optional[int]:
-        asyncio.new_event_loop()
         loop = asyncio.get_event_loop()
         future = asyncio.ensure_future(self.sample_async(bstr))
         return loop.run_until_complete(future)
@@ -295,19 +261,11 @@ def classify(xs, ys):
 def get_pump_report(
         pattern: bytes,
         flags: str,
-        witness: str, # the witness (as ASCII, will decode in the function)
+        witness: bytes, # the witness (as ASCII, will decode in the function)
         width: int,
         deadline: float,
     ):
     assert fuzzer_binary is not None # TODO make this a param
-    # regularize the witness
-    if width == 1:
-        witness = decode_witness_one_byte(witness)
-    elif width == 2:
-        witness = decode_witness_two_byte(witness)
-    else:
-        raise Exception('unreachable')
-
 
     report = pump_full_report(
         pattern,
@@ -359,6 +317,8 @@ def get_pump_report(
         ret_obj['prefix'] = witness[0:slowest_pump_pos]
         ret_obj['pump'] = witness[slowest_pump_pos:slowest_pump_pos + slowest_pump_len]
         ret_obj['suffix'] = witness[slowest_pump_pos + slowest_pump_len:]
+        ret_obj['pump_pos'] = slowest_pump_pos
+        ret_obj['pump_len'] = slowest_pump_len
     return ret_obj
 
 

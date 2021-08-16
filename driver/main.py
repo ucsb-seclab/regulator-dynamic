@@ -14,7 +14,10 @@ import logging.handlers
 import io
 import time
 import colored
+import ast
+
 import pump
+import binsearch_pump
 
 VERSION = 1
 
@@ -82,6 +85,40 @@ def configure_logging(log_level: int = logging.INFO, log_file: str = './log.txt'
     ch.setFormatter(formatter)
     logger.addHandler(ch)
 
+def decode_witness_one_byte(s: str) -> bytes:
+    s = s.replace("'", "\\'")
+    s = ast.literal_eval("b'" + s + "'")
+    return s
+
+def decode_witness_two_byte(s: str) -> bytes:
+    b = b''
+    i = 0
+    while i < len(s):
+        c = s[i]
+        if c == '\\' and s[i+1] == 'u':
+            b1 = int(s[i+2:i+4], 16)
+            b2 = int(s[i+4:i+6], 16)
+            # load as little-endian
+            b += bytes([b2, b1])
+            i += 6
+        elif c == '\\' and s[i+1] == '\\':
+            b += bytes([ord('\\'), 0])
+            i += 2
+        elif c == '\\' and s[i+1] == 'r':
+            b += bytes([ord('\r'), 0])
+            i += 2
+        elif c == '\\' and s[i+1] == 't':
+            b += bytes([ord('\t'), 0])
+            i += 2
+        elif c == '\\' and s[i+1] == 'n':
+            b += bytes([ord('\t'), 0])
+            i += 2
+        else:
+            assert  ' ' <= c <= '~'
+            b += bytes([ord(c), 0])
+            i += 1
+    return b
+
 
 def main():
     #
@@ -127,13 +164,6 @@ def main():
     )
 
     parser.add_argument(
-        '--vtime',
-        type=int,
-        help='Maximum milliseconds to spend validating -- 0 = disable',
-        default=((2 * 60) * 1000),
-    )
-
-    parser.add_argument(
         '--length',
         type=int,
         help='Subject string length to fuzz',
@@ -145,6 +175,13 @@ def main():
         type=int,
         help='Byte width (1 or 2)',
         default=1,
+    )
+
+    parser.add_argument(
+        '--no-binary-search',
+        action='store_false',
+        dest='binary_search',
+        help='Do not run binary search to find string-length to get 10s slow-down'
     )
 
     args = parser.parse_args()
@@ -232,11 +269,6 @@ def main():
     ftime_sz = f'{(args.ftime / 1000):.2f}'
     ptime_sz = f'{(args.ptime / 1000):.2f}'
     l.info(f'Proceeding to fuzzing ({ftime_sz} s) then to pump ({ptime_sz} s)')
-
-    if args.vtime > 0:
-        l.info(f'Validating for {args.vtime / 1000:.2f} s')
-    else:
-        l.info('Not validating formula')
 
     time.sleep(1)
 
@@ -350,17 +382,35 @@ def main():
 
     l.info(f'Starting pump with witness {witness} for {ptime_sz}')
 
+    if args.width == 1:
+        bwitness = decode_witness_one_byte(witness)
+    elif args.width == 2:
+        bwitness = decode_witness_two_byte(witness)
+    else:
+        raise Exception('unreachable')
+
     deadline = time.time() * 1000 + args.ptime
 
     pump.fuzzer_binary = fuzzer_binary
     report = pump.get_pump_report(
         bregex,
         flags.strip().encode('ascii'),
-        witness,
+        bwitness,
         args.width,
         deadline
     )
     l.info(f'Pump completed, classed as {report["class"]}')
+    if args.binary_search and ('pump_pos' in report and 'pump_len' in report):
+        l.info(f'Proceeding to binary-search for 10s slow-down length')
+        pl = binsearch_pump.find_limit(
+            bregex,
+            flags.strip().encode('ascii'),
+            bwitness,
+            args.width,
+            report['pump_pos'],
+            report['pump_len'],
+        )
+        print(pl)
 
 
 if __name__ == '__main__':
