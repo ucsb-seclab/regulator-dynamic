@@ -7,7 +7,7 @@ We currently only support fuzzing the V8 regexp engine [irregexp](https://blog.c
 
 ## Building
 
-To build locally:
+To build locally (tested on Ubuntu 20.04):
 
 1. Get dependencies:\
 `apt-get update &&
