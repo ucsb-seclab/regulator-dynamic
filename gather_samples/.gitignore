@@ -1,6 +1,0 @@
-node_modules
-tarballs
-regexps
-manifests
-*.sqlite3
-*.sqlite3-journal

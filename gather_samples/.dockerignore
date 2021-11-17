@@ -1,7 +1,0 @@
-out
-*.sqlite3
-tarballs
-regexps
-node_modules
-manifests
-
